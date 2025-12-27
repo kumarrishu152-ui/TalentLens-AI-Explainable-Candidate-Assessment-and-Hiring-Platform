@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 
 const JobConfigSchema = new mongoose.Schema({
-  // CHANGED: Removed 'unique: true' to allow multiple historical configs per user
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

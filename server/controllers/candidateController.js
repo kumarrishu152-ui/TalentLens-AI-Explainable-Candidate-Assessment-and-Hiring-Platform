@@ -1,11 +1,8 @@
-// server/controllers/candidateController.js
-
 const Candidate = require('../models/Candidate');
 const JobConfig = require('../models/JobConfig');
 const User = require('../models/User'); 
 const { extractTextFromPDF } = require('../utils/resumeParser');
 const { parseResumeWithGemini } = require('../services/geminiService');
-// Note: We are importing 'tuneWeights' here, which we will implement in the next step
 const { getPrediction, tuneWeights } = require('../services/mlServiceBridge');
 const { decrypt } = require('../utils/encryption'); 
 

@@ -1,10 +1,8 @@
-// server/controllers/userController.js
 const User = require('../models/User');
 const Candidate = require('../models/Candidate');
 const JobConfig = require('../models/JobConfig');
 const { encrypt, decrypt } = require('../utils/encryption');
 
-// Feature 1: Save Encrypted Key
 exports.saveApiKey = async (req, res) => {
     try {
         const { apiKey } = req.body;
@@ -24,7 +22,7 @@ exports.saveApiKey = async (req, res) => {
     }
 };
 
-// Feature 2: Reset Job (Delete Data)
+
 exports.resetJob = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -46,7 +44,7 @@ exports.resetJob = async (req, res) => {
     }
 };
 
-// Feature 3: Top Candidates Leaderboard
+
 exports.getTopCandidates = async (req, res) => {
     try {
         const userId = req.user.id;

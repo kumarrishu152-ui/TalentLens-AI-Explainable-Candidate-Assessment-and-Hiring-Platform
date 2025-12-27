@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Trophy, TrendingUp } from 'lucide-react';
 import { userAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import GlowCard from './ui/GlowCard'; // Import
+import GlowCard from './ui/GlowCard'; 
 
 const Leaderboard = () => {
   const [candidates, setCandidates] = useState([]);

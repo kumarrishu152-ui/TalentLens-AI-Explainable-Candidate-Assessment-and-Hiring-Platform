@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, GraduationCap, ChevronRight } from 'lucide-react';
-import GlowCard from './ui/GlowCard'; // Import the new component
+import GlowCard from './ui/GlowCard'; 
 
 const CandidateCard = ({ candidate }) => {
   const navigate = useNavigate();
@@ -15,7 +15,7 @@ const CandidateCard = ({ candidate }) => {
   return (
     <GlowCard 
       onClick={() => navigate(`/candidate/${candidate._id}`)}
-      className="cursor-pointer hover:shadow-md h-full p-6" // Added p-6 here since GlowCard strips inner padding
+      className="cursor-pointer hover:shadow-md h-full p-6" 
     >
       <div className="flex items-start justify-between mb-4">
         <div>

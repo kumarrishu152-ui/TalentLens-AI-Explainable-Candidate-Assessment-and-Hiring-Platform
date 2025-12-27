@@ -28,6 +28,9 @@ const getPrediction = async (candidateData, jobConfig, apiKey) => {
             api_key: apiKey || null
         };
 
+        const requestUrl = `${ML_BASE_URL}/predict`;
+        console.log(`🔍 DEBUG: Calling URL -> ${requestUrl}`);
+
         // Send Request
         const response = await axios.post(`${ML_BASE_URL}/predict`, payload, { timeout: 10000 });
 
@@ -40,7 +43,7 @@ const getPrediction = async (candidateData, jobConfig, apiKey) => {
     }
 };
 
-// 2. Tune Weights (New Feature)
+// 2. Tune Weights
 const tuneWeights = async (trainingData, currentConfig) => {
     console.log("\n========================================================");
     console.log("🧠 ML BRIDGE: Initiating Fine-Tuning Sequence");

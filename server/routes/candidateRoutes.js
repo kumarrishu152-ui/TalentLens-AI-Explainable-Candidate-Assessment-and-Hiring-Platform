@@ -1,15 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const auth = require('../middleware/auth'); // Import Auth Middleware
-
+const auth = require('../middleware/auth'); 
 const { 
     uploadResume, 
     predictCandidate, 
     getAllCandidates, 
     getCandidateById,
     deleteCandidate,
-    rateCandidate // <--- Import the new Rate function
+    rateCandidate 
 } = require('../controllers/candidateController');
 
 // Configure Multer to store file in memory for immediate parsing
@@ -20,7 +19,7 @@ const upload = multer({ storage: storage });
 router.post('/upload', auth, upload.single('resume'), uploadResume);
 router.post('/:id/predict', auth, predictCandidate);
 
-// New: Rate Candidate Route (Triggers Tuning when buffer is full)
+// Rate Candidate Route (Triggers Tuning when buffer is full)
 router.post('/:id/rate', auth, rateCandidate);
 
 router.get('/', auth, getAllCandidates);

@@ -10,8 +10,8 @@ import {
   AlertCircle,
   Trash2,
   FileText,
-  Star,        // <--- New Import
-  CheckCircle  // <--- New Import
+  Star,        
+  CheckCircle  
 } from 'lucide-react';
 import { candidateAPI } from '../services/api';
 import AnalyticsChart from '../components/AnalyticsChart';

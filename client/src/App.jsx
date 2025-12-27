@@ -4,9 +4,9 @@ import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import CandidateDetails from './pages/CandidateDetails';
 import JobSetup from './pages/JobSetup';
-import SetupModal from './components/SetupModal'; // New Component
-import Login from './pages/Login'; // You would create this simple form page
-import { AuthProvider, useAuth } from './context/AuthContext'; // New Context
+import SetupModal from './components/SetupModal'; 
+import Login from './pages/Login'; 
+import { AuthProvider, useAuth } from './context/AuthContext'; 
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {

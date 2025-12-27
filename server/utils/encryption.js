@@ -1,4 +1,3 @@
-// server/utils/encryption.js
 const crypto = require('crypto');
 
 const algorithm = 'aes-256-ctr';

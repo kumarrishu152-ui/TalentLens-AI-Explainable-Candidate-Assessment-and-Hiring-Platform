@@ -1,4 +1,3 @@
-// server/utils/resumeParser.js
 const pdfParse = require('pdf-parse');
 
 const extractTextFromPDF = async (buffer) => {

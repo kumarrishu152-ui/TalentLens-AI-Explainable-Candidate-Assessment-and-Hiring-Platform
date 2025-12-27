@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const auth = require('../middleware/auth'); // Import Auth Middleware
+const auth = require('../middleware/auth'); 
 const { 
     createJobConfig, 
     getActiveConfig, 
-    updateJobConfig // <--- Import the new update function
+    updateJobConfig 
 } = require('../controllers/jobConfigController');
 
 const storage = multer.memoryStorage();

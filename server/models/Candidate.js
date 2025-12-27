@@ -12,7 +12,7 @@ const CandidateSchema = new mongoose.Schema({
     summary: { type: String },
     resume_text: { type: String }, // Raw text from PDF
     
-    // --- NEW: HR Feedback Loop ---
+
     // Stores the manual rating (1-10) given by the recruiter
     hr_rating: { 
         type: Number, 
