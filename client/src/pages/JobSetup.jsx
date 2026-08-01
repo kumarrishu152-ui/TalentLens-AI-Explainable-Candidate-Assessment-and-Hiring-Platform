@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Upload, Sliders, AlertCircle, FileText, Briefcase, Loader2, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Upload, Sliders, AlertCircle, FileText, Briefcase, Loader2, CheckCircle2, Plus, X, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { candidateAPI } from '../services/api';
 import GlowCard from '../components/ui/GlowCard';
@@ -9,17 +9,39 @@ const JobSetup = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [activeConfig, setActiveConfig] = useState(null);
   
+  // Custom skills builder state
+  const [newSkillTag, setNewSkillTag] = useState('');
+  const [newSkillCategory, setNewSkillCategory] = useState('Tool');
+  const [newSkillImportance, setNewSkillImportance] = useState('Important');
+
   const [formData, setFormData] = useState({
     jobTitle: '',
     minExperience: 0,
-    tier1Only: false,
+    targetDegree: 'Bachelors',
+    targetField: '',
     experienceWeight: 40,
     skillsWeight: 40,
     educationWeight: 20,
+    manualSkills: [], // items are { tag, category, importance, source }
   });
 
   const [benchmarkFiles, setBenchmarkFiles] = useState([]);
+
+  useEffect(() => {
+    const loadActiveConfig = async () => {
+      try {
+        const config = await candidateAPI.getActiveJobConfig();
+        if (config) {
+          setActiveConfig(config);
+        }
+      } catch (err) {
+        console.error("Failed to load active job config:", err);
+      }
+    };
+    loadActiveConfig();
+  }, []);
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -30,6 +52,102 @@ const JobSetup = () => {
     setBenchmarkFiles(files);
   };
 
+  const handleParseBenchmarks = async () => {
+    if (benchmarkFiles.length === 0) {
+      setStep(3);
+      return;
+    }
+    setLoading(true);
+    setLoadingMessage("Analyzing benchmark resumes to construct base criteria...");
+    try {
+      const payload = new FormData();
+      benchmarkFiles.forEach(file => {
+        payload.append('benchmark_resumes', file);
+      });
+      const data = await candidateAPI.parseBenchmarks(payload);
+      
+      setFormData(prev => {
+        const existingTags = prev.manualSkills.map(s => s.tag.toLowerCase().trim());
+        const benchmarkSkills = (data.skills || [])
+          .filter(s => !existingTags.includes(s.tag.toLowerCase().trim()))
+          .map(s => ({
+            tag: s.tag,
+            category: s.category || 'Tool',
+            importance: s.importance || 'Important',
+            weight: s.weight || 50,
+            source: 'benchmark'
+          }));
+
+        return {
+          ...prev,
+          minExperience: data.avgYearsExperience || prev.minExperience,
+          targetDegree: data.educationDegreeTarget || prev.targetDegree,
+          targetField: data.educationFieldTarget || prev.targetField,
+          manualSkills: [...prev.manualSkills, ...benchmarkSkills],
+          goldStandardBenchmark: {
+            avgYearsExperience: data.avgYearsExperience || 5,
+            topSkills: (data.skills || []).map(s => s.tag),
+            educationDegreeTarget: data.educationDegreeTarget || 'Bachelors',
+            educationFieldTarget: data.educationFieldTarget || ''
+          }
+        };
+      });
+      setStep(3);
+    } catch (err) {
+      console.error("Benchmark analysis failed.", err);
+      alert("Gold Standard resumes could not be processed automatically. Proceeding with manual criteria setup.");
+      setStep(3);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddSkill = () => {
+    if (!newSkillTag.trim()) return;
+    const tag = newSkillTag.toLowerCase().trim();
+    
+    if (formData.manualSkills.some(s => s.tag.toLowerCase().trim() === tag)) {
+      alert("This skill tag already exists in the criteria list.");
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      manualSkills: [
+        ...prev.manualSkills,
+        {
+          tag: newSkillTag.trim(),
+          category: newSkillCategory,
+          importance: newSkillImportance,
+          source: 'manual'
+        }
+      ]
+    }));
+    setNewSkillTag('');
+  };
+
+  const handleRemoveSkill = (indexToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      manualSkills: prev.manualSkills.filter((_, idx) => idx !== indexToRemove)
+    }));
+  };
+
+  const handleRollback = async () => {
+    if (!window.confirm("Are you sure you want to rollback to the previous weight configurations?")) return;
+    setLoading(true);
+    setLoadingMessage("Rolling back configuration...");
+    try {
+      await candidateAPI.rollbackJobConfig();
+      alert("Successfully rolled back to the previous configuration version.");
+      window.location.reload();
+    } catch (err) {
+      alert("Rollback failed: " + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!formData.jobTitle) {
         alert("Please enter a Job Title.");
@@ -38,30 +156,14 @@ const JobSetup = () => {
     }
 
     setLoading(true);
-    setLoadingMessage("Uploading benchmark resumes...");
+    setLoadingMessage("Saving job configuration & starting pipeline...");
 
     try {
-        const payload = new FormData();
-        // Pack the form data into a JSON string under 'config'
-        payload.append('config', JSON.stringify(formData));
-        
-        // Append all selected files for benchmarking
-        benchmarkFiles.forEach(file => {
-            payload.append('benchmark_resumes', file);
-        });
-
-        // Update message for the long wait
-        setTimeout(() => setLoadingMessage("Training AI Model with Gold Standard data... (This may take a minute)"), 2000);
-        
-        console.log("🚀 Submitting Job Configuration...");
-        await candidateAPI.createJobConfig(payload);
-        
-        console.log("✅ Job Config Saved!");
-        // Redirect to dashboard on success
+        await candidateAPI.createJobConfig(formData);
         navigate('/'); 
 
     } catch (err) {
-        console.error("❌ Submission failed", err);
+        console.error('Job config submission failed:', err);
         alert("Failed to save job configuration: " + (err.response?.data?.error || err.message));
         setLoading(false);
     }
@@ -83,14 +185,25 @@ const JobSetup = () => {
         </div>
       )}
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-            <Briefcase className="w-8 h-8 text-primary-600" />
-            Job Configuration & Training
-        </h1>
-        <p className="text-slate-600 mt-2">
-            Configure scoring weights and upload top performer resumes to train the ranking model.
-        </p>
+      <div className="mb-8 flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
+              <Briefcase className="w-8 h-8 text-primary-600" />
+              Job Configuration & Training
+          </h1>
+          <p className="text-slate-600 mt-2">
+              Configure criteria tags, select target degree filters, and upload performer resumes to seed scoring weights.
+          </p>
+        </div>
+        {activeConfig && activeConfig.versionHistory && activeConfig.versionHistory.length > 0 && (
+          <button 
+            onClick={handleRollback}
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 bg-white rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm font-medium"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Rollback Configuration
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -98,7 +211,7 @@ const JobSetup = () => {
         <div className="space-y-4">
             <StepIndicator number={1} title="Job Details" current={step} />
             <StepIndicator number={2} title="Gold Standard" current={step} />
-            <StepIndicator number={3} title="Scoring Logic" current={step} />
+            <StepIndicator number={3} title="Criteria Builder" current={step} />
         </div>
 
         {/* Main Form Content */}
@@ -141,13 +254,13 @@ const JobSetup = () => {
                     <div className="space-y-6">
                         <div className="border-b border-slate-100 pb-4">
                             <h2 className="text-xl font-bold text-slate-900">Gold Standard Benchmarking</h2>
-                            <p className="text-sm text-slate-500">Upload resumes of your top performers to train the AI.</p>
+                            <p className="text-sm text-slate-500">Upload resumes of your top performers to seed criteria and extract profiles.</p>
                         </div>
 
                         <div className="bg-blue-50 p-4 rounded-lg flex gap-3 border border-blue-100">
                             <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                             <div className="text-sm text-blue-800">
-                                <strong>Why this matters:</strong> The AI extracts patterns (avg experience, top schools, key skills) from these files to create a custom "Success Profile" for this job.
+                                <strong>Success Profile Extraction (Optional):</strong> The parser will identify experience patterns, top degree credentials, and common technical tags across these files to pre-seed Step 3. You can skip this step to configure criteria manually.
                             </div>
                         </div>
                         
@@ -188,69 +301,170 @@ const JobSetup = () => {
 
                         <div className="flex gap-3 pt-4 mt-auto">
                             <button onClick={() => setStep(1)} className="btn-secondary flex-1">Back</button>
-                            <button onClick={() => setStep(3)} className="btn-primary flex-1">Next: Scoring Logic</button>
+                            <button onClick={handleParseBenchmarks} className="btn-primary flex-1">
+                                {benchmarkFiles.length > 0 ? 'Analyze & Continue' : 'Skip & Configure Manually'}
+                            </button>
                         </div>
                     </div>
                 )}
 
-                {/* STEP 3: HR Scoring Controls */}
+                {/* STEP 3: Criteria tag builder */}
                 {step === 3 && (
                     <div className="space-y-6">
                          <div className="border-b border-slate-100 pb-4">
-                            <h2 className="text-xl font-bold text-slate-900">Scoring Parameters</h2>
-                            <p className="text-sm text-slate-500">Fine-tune how the AI prioritizes different candidate attributes.</p>
+                            <h2 className="text-xl font-bold text-slate-900">Criteria Builder</h2>
+                            <p className="text-sm text-slate-500">Add skill tags, configure educational standards, and set priority weights.</p>
                         </div>
                         
-                        {/* Hard Filters Section */}
+                        {/* Hard & Soft Filters Section */}
                         <div className="space-y-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
                             <h3 className="font-semibold text-slate-900 flex items-center gap-2 text-sm uppercase tracking-wide">
-                                <AlertCircle className="w-4 h-4 text-slate-500" /> Hard Filters
+                                <AlertCircle className="w-4 h-4 text-slate-500" /> Educational & Experience Thresholds
                             </h3>
-                            <div className="flex items-center justify-between">
-                                <label className="text-sm text-slate-700 font-medium">Min. Years of Experience</label>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Min. Experience (Years)</label>
                                 <input 
                                     type="number" 
                                     min="0"
-                                    className="w-24 p-2 border rounded-md text-center focus:ring-2 focus:ring-primary-500 outline-none"
+                                    className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary-500 outline-none text-sm bg-white"
                                     value={formData.minExperience}
                                     onChange={(e) => setFormData({...formData, minExperience: parseInt(e.target.value) || 0})}
                                 />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Target Degree Level</label>
+                                <select 
+                                    className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary-500 outline-none text-sm bg-white"
+                                    value={formData.targetDegree}
+                                    onChange={(e) => setFormData({...formData, targetDegree: e.target.value})}
+                                >
+                                    <option value="None">None (No degree required)</option>
+                                    <option value="Associate">Associate Degree</option>
+                                    <option value="Bachelors">Bachelors Degree</option>
+                                    <option value="Masters">Masters Degree</option>
+                                    <option value="PhD">PhD Doctor of Philosophy</option>
+                                </select>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3">
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Target Field of Study (Optional)</label>
                                 <input 
-                                    type="checkbox" 
-                                    id="tier1"
-                                    checked={formData.tier1Only}
-                                    onChange={(e) => setFormData({...formData, tier1Only: e.target.checked})}
-                                    className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500 border-gray-300"
+                                    type="text" 
+                                    placeholder="e.g. Computer Science"
+                                    className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary-500 outline-none text-sm bg-white animate-transition"
+                                    value={formData.targetField}
+                                    onChange={(e) => setFormData({...formData, targetField: e.target.value})}
                                 />
-                                <label htmlFor="tier1" className="text-sm text-slate-700 font-medium cursor-pointer select-none">
-                                    Require Top Tier University Only
-                                </label>
                             </div>
                         </div>
 
-                        {/* Soft Weights Section */}
-                        <div className="space-y-6">
+                        {/* Coarse weights sliders */}
+                        <div className="space-y-4">
                             <h3 className="font-semibold text-slate-900 flex items-center gap-2 text-sm uppercase tracking-wide">
-                                <Sliders className="w-4 h-4 text-slate-500" /> Priority Weights
+                                <Sliders className="w-4 h-4 text-slate-500" /> Core Ranking Weights
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <WeightSlider 
+                                    label="Experience Weight" 
+                                    value={formData.experienceWeight} 
+                                    onChange={(val) => setFormData({...formData, experienceWeight: val})} 
+                                />
+                                <WeightSlider 
+                                    label="Skills Match Weight" 
+                                    value={formData.skillsWeight} 
+                                    onChange={(val) => setFormData({...formData, skillsWeight: val})} 
+                                />
+                                <WeightSlider 
+                                    label="Education Weight" 
+                                    value={formData.educationWeight} 
+                                    onChange={(val) => setFormData({...formData, educationWeight: val})} 
+                                />
+                            </div>
+                        </div>
+
+                        {/* Detailed Tag Builder Section */}
+                        <div className="space-y-4 border-t border-slate-100 pt-6">
+                            <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wide">
+                                Candidate Skill & Trait Tags
                             </h3>
                             
-                            <WeightSlider 
-                                label="Experience Importance" 
-                                value={formData.experienceWeight} 
-                                onChange={(val) => setFormData({...formData, experienceWeight: val})} 
-                            />
-                            <WeightSlider 
-                                label="Skills Match Importance" 
-                                value={formData.skillsWeight} 
-                                onChange={(val) => setFormData({...formData, skillsWeight: val})} 
-                            />
-                             <WeightSlider 
-                                label="Education Prestige Importance" 
-                                value={formData.educationWeight} 
-                                onChange={(val) => setFormData({...formData, educationWeight: val})} 
-                            />
+                            {/* Skills Builder Add Box */}
+                            <div className="flex flex-col sm:flex-row gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <input 
+                                    type="text"
+                                    placeholder="Add skill tag, e.g. docker, communication..."
+                                    className="flex-1 p-2 border rounded-md text-sm outline-none bg-white focus:ring-2 focus:ring-primary-500"
+                                    value={newSkillTag}
+                                    onChange={(e) => setNewSkillTag(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault() || handleAddSkill())}
+                                />
+                                <select 
+                                    className="p-2 border rounded-md text-sm bg-white outline-none focus:ring-2 focus:ring-primary-500"
+                                    value={newSkillCategory}
+                                    onChange={(e) => setNewSkillCategory(e.target.value)}
+                                >
+                                    <option value="Language">Language</option>
+                                    <option value="Framework">Framework</option>
+                                    <option value="Tool">Tool</option>
+                                    <option value="Practice">Practice</option>
+                                    <option value="Soft-Skill">Soft-Skill</option>
+                                </select>
+                                <select 
+                                    className="p-2 border rounded-md text-sm bg-white outline-none focus:ring-2 focus:ring-primary-500"
+                                    value={newSkillImportance}
+                                    onChange={(e) => setNewSkillImportance(e.target.value)}
+                                >
+                                    <option value="Must-have">Must-have</option>
+                                    <option value="Important">Important</option>
+                                    <option value="Nice-to-have">Nice-to-have</option>
+                                </select>
+                                <button 
+                                    type="button" 
+                                    onClick={handleAddSkill}
+                                    className="btn-primary px-4 py-2 flex items-center justify-center gap-1"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Add
+                                </button>
+                            </div>
+
+                            {/* Tags list */}
+                            <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto pr-1">
+                                {formData.manualSkills.length === 0 ? (
+                                    <p className="text-sm text-slate-400 italic">No skill tags configured yet. Add some manual tags or upload performers resumes to auto-extract.</p>
+                                ) : (
+                                    formData.manualSkills.map((skill, index) => {
+                                        const badgeColors = {
+                                            'Must-have': 'bg-red-50 text-red-700 border-red-200',
+                                            'Important': 'bg-blue-50 text-blue-700 border-blue-200',
+                                            'Nice-to-have': 'bg-slate-100 text-slate-700 border-slate-200'
+                                        };
+
+                                        return (
+                                            <div 
+                                                key={index} 
+                                                className={`flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full border text-xs font-semibold ${badgeColors[skill.importance] || 'bg-slate-100 text-slate-700'}`}
+                                            >
+                                                <span>{skill.tag}</span>
+                                                <span className="opacity-50 text-[10px]">({skill.category})</span>
+                                                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-inherit">
+                                                    {skill.source === 'benchmark' ? 'AI' : 'HR'}
+                                                </span>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => handleRemoveSkill(index)}
+                                                    className="p-0.5 hover:bg-slate-200/50 rounded-full transition-colors"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
                         </div>
 
                         <div className="flex gap-3 pt-6 border-t border-slate-100">
@@ -292,8 +506,8 @@ const StepIndicator = ({ number, title, current }) => (
 const WeightSlider = ({ label, value, onChange }) => (
     <div>
         <div className="flex justify-between mb-2">
-            <span className="text-sm font-medium text-slate-700">{label}</span>
-            <span className="text-sm text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded">{value}%</span>
+            <span className="text-xs font-semibold text-slate-600">{label}</span>
+            <span className="text-xs text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded">{value}%</span>
         </div>
         <input 
             type="range" 

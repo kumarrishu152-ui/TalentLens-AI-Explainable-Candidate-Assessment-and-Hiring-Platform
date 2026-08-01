@@ -9,20 +9,25 @@ const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setLoading(true);
     try {
       const data = isLogin 
         ? await userAPI.login(username, password)
         : await userAPI.register(username, password);
-      
       login(data.token, data.user); 
       navigate('/');
     } catch (err) {
-      alert(err.response?.data?.message || "Authentication failed");
+      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -61,16 +66,23 @@ const Login = () => {
               required
             />
           </div>
-          
-          <button className="w-full btn-primary py-3 font-bold text-lg">
-            {isLogin ? 'Sign In' : 'Sign Up'}
+
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} className="w-full btn-primary py-3 font-bold text-lg disabled:opacity-60 disabled:cursor-not-allowed">
+            {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Sign Up')}
           </button>
         </form>
 
         <p className="text-center mt-6 text-slate-600">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
           <button 
-            onClick={() => setIsLogin(!isLogin)}
+            type="button"
+            onClick={() => { setIsLogin(!isLogin); setError(''); }}
             className="text-primary-600 font-bold hover:underline"
           >
             {isLogin ? 'Sign Up' : 'Login'}

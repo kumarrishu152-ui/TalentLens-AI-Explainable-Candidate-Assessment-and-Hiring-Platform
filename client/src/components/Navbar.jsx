@@ -52,11 +52,7 @@ const Navbar = () => {
                   <span className="hidden md:inline">Sign Out</span>
                 </button>
               </>
-            ) : (
-              <Link to="/login" className="text-primary-600 font-bold hover:underline">
-                Login
-              </Link>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

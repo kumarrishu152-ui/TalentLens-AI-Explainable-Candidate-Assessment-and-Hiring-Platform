@@ -70,9 +70,15 @@ export const candidateAPI = {
 
   // --- JOB CONFIGURATION ENDPOINTS ---
 
-  // Create & Train (Uploads PDFs)
-  createJobConfig: async (formData) => {
-    const response = await api.post('/job-config', formData, {
+  // Create & Train
+  createJobConfig: async (data) => {
+    const response = await api.post('/job-config', data);
+    return response.data;
+  },
+
+  // Parse Benchmarks without saving yet
+  parseBenchmarks: async (formData) => {
+    const response = await api.post('/job-config/parse-benchmarks', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
@@ -87,6 +93,12 @@ export const candidateAPI = {
   // Update Config (Feature 3: Tweak Weights)
   updateJobConfig: async (data) => {
     const response = await api.put('/job-config/active', data);
+    return response.data;
+  },
+
+  // Rollback Job Config
+  rollbackJobConfig: async () => {
+    const response = await api.post('/job-config/rollback');
     return response.data;
   }
 };

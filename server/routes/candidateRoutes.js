@@ -8,7 +8,8 @@ const {
     getAllCandidates, 
     getCandidateById,
     deleteCandidate,
-    rateCandidate 
+    rateCandidate,
+    updatePipelineStatus
 } = require('../controllers/candidateController');
 
 // Configure Multer to store file in memory for immediate parsing
@@ -19,8 +20,11 @@ const upload = multer({ storage: storage });
 router.post('/upload', auth, upload.single('resume'), uploadResume);
 router.post('/:id/predict', auth, predictCandidate);
 
-// Rate Candidate Route (Triggers Tuning when buffer is full)
+// Rate Candidate Route
 router.post('/:id/rate', auth, rateCandidate);
+
+// Pipeline status updates
+router.patch('/:id/status', auth, updatePipelineStatus);
 
 router.get('/', auth, getAllCandidates);
 router.get('/:id', auth, getCandidateById);
