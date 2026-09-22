@@ -27,6 +27,20 @@ const CandidateSchema = new mongoose.Schema({
         default: 'New'
     },
 
+    // Required before a candidate can enter Interview or Offer.
+    verificationTest: {
+        status: { type: String, enum: ['Not started', 'Passed', 'Failed'], default: 'Not started' },
+        questions: [{
+            skill: String,
+            question: String,
+            options: [String],
+            correctAnswer: Number,
+            selectedAnswer: Number
+        }],
+        score: { type: Number, default: null },
+        completedAt: Date
+    },
+
     // Multi-Reviewer Ratings (prevents single-reviewer rating override)
     hr_ratings: [{
         userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -63,12 +77,11 @@ const CandidateSchema = new mongoose.Schema({
 });
 
 // Update single hr_rating to reflect average of multi-reviewer ratings before saving
-CandidateSchema.pre('save', function (next) {
+CandidateSchema.pre('save', function () {
     if (this.hr_ratings && this.hr_ratings.length > 0) {
         const sum = this.hr_ratings.reduce((acc, curr) => acc + curr.rating, 0);
         this.hr_rating = Math.round((sum / this.hr_ratings.length) * 10) / 10;
     }
-    next();
 });
 
 module.exports = mongoose.model('Candidate', CandidateSchema);

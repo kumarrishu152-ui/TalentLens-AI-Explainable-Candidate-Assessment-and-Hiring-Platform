@@ -3,6 +3,7 @@ import { Upload, Sliders, AlertCircle, FileText, Briefcase, Loader2, CheckCircle
 import { useNavigate } from 'react-router-dom';
 import { candidateAPI } from '../services/api';
 import GlowCard from '../components/ui/GlowCard';
+import VoiceInput from '../components/VoiceInput';
 
 const JobSetup = () => {
   const navigate = useNavigate();
@@ -228,14 +229,18 @@ const JobSetup = () => {
                         
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Job Title</label>
-                            <input 
-                                type="text" 
-                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-slate-50 focus:bg-white transition-colors"
-                                placeholder="e.g. Senior Backend Engineer"
-                                value={formData.jobTitle}
-                                onChange={(e) => setFormData({...formData, jobTitle: e.target.value})}
-                                autoFocus
-                            />
+                            <div className="flex gap-2">
+                              <input 
+                                  type="text" 
+                                  className="min-w-0 flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-slate-50 focus:bg-white transition-colors"
+                                  placeholder="e.g. Senior Backend Engineer"
+                                  value={formData.jobTitle}
+                                  onChange={(e) => setFormData({...formData, jobTitle: e.target.value})}
+                                  autoFocus
+                              />
+                              <VoiceInput label="Speak the job title" onTranscript={text => setFormData(current => ({ ...current, jobTitle: text }))} />
+                            </div>
+                            <p className="text-xs text-slate-500 mt-2">Use Voice to dictate the job title, criteria field, and skills.</p>
                         </div>
 
                         <div className="pt-4">
@@ -351,13 +356,16 @@ const JobSetup = () => {
 
                             <div>
                                 <label className="block text-xs font-medium text-slate-600 mb-1">Target Field of Study (Optional)</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="e.g. Computer Science"
-                                    className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary-500 outline-none text-sm bg-white animate-transition"
-                                    value={formData.targetField}
-                                    onChange={(e) => setFormData({...formData, targetField: e.target.value})}
-                                />
+                                <div className="flex gap-2">
+                                  <input 
+                                      type="text" 
+                                      placeholder="e.g. Computer Science"
+                                      className="min-w-0 flex-1 p-2 border rounded-md focus:ring-2 focus:ring-primary-500 outline-none text-sm bg-white animate-transition"
+                                      value={formData.targetField}
+                                      onChange={(e) => setFormData({...formData, targetField: e.target.value})}
+                                  />
+                                  <VoiceInput label="Speak the target field of study" onTranscript={text => setFormData(current => ({ ...current, targetField: text }))} />
+                                </div>
                             </div>
                         </div>
 
@@ -401,6 +409,7 @@ const JobSetup = () => {
                                     onChange={(e) => setNewSkillTag(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault() || handleAddSkill())}
                                 />
+                                <VoiceInput label="Speak a skill tag" onTranscript={setNewSkillTag} />
                                 <select 
                                     className="p-2 border rounded-md text-sm bg-white outline-none focus:ring-2 focus:ring-primary-500"
                                     value={newSkillCategory}

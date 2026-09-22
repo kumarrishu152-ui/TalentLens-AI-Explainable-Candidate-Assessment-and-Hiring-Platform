@@ -1,10 +1,12 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-if (!process.env.GEMINI_API_KEY) {
-    console.error("GEMINI_API_KEY is not set in the environment.");
-}
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const getClient = (apiKey) => {
+    const key = apiKey || process.env.GEMINI_API_KEY;
+    if (!key) {
+        throw new Error('Gemini API key is not configured. Save one in the app or set GEMINI_API_KEY in server/.env.');
+    }
+    return new GoogleGenerativeAI(key);
+};
 
 const getPrompt = () => `
 You are an expert ATS resume parser. Extract the following information from the resume and return it as strictly valid JSON.
@@ -26,7 +28,8 @@ Fields to extract:
 9. "is_keyword_stuffed": Set to true if the resume contains a long list/wall of 40+ disconnected skills without supporting text or career details.
 `;
 
-const parseResumeWithGemini = async (resumeTextOrBuffer, isBuffer = false) => {
+const parseResumeWithGemini = async (resumeTextOrBuffer, isBuffer = false, apiKey) => {
+    const genAI = getClient(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const prompt = getPrompt();
 
@@ -83,12 +86,9 @@ const parseResumeWithGemini = async (resumeTextOrBuffer, isBuffer = false) => {
     }
 };
 
-const getSkillsWithEmbeddings = async (skills) => {
-    if (!process.env.GEMINI_API_KEY) {
-        console.warn("Skipping embeddings generation: GEMINI_API_KEY is not set.");
-        return [];
-    }
-    const model = genAI.getGenerativeModel({ model: "text-embedding-04" });
+const getSkillsWithEmbeddings = async (skills, apiKey) => {
+    const genAI = getClient(apiKey);
+    const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
     const promises = (skills || []).map(async (skill) => {
         try {
             const trimmed = skill.toLowerCase().trim();

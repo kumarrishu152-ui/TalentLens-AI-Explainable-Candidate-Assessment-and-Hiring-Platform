@@ -18,11 +18,13 @@ import {
   EyeOff,
   Eye,
   Plus,
-  Minus
+  Minus,
+  ClipboardCheck
 } from 'lucide-react';
 import { candidateAPI } from '../services/api';
 import AnalyticsChart from '../components/AnalyticsChart';
 import GlowCard from '../components/ui/GlowCard';
+import VoiceInterviewPractice from '../components/VoiceInterviewPractice';
 
 const CandidateDetails = () => {
   const { id } = useParams();
@@ -34,6 +36,8 @@ const CandidateDetails = () => {
   const [predicting, setPredicting] = useState(false);
   const [error, setError] = useState(null);
   const [blindMode, setBlindMode] = useState(false);
+  const [testAnswers, setTestAnswers] = useState([]);
+  const [testLoading, setTestLoading] = useState(false);
 
   // Ratings State
   const [rating, setRating] = useState(0);
@@ -53,6 +57,11 @@ const CandidateDetails = () => {
       
       const candidateData = data.candidate || data;
       setCandidate(candidateData);
+      if (candidateData.verificationTest?.questions?.length && candidateData.verificationTest.status === 'Not started') {
+        setTestAnswers(candidateData.verificationTest.questions.map(question =>
+          Number.isInteger(question.selectedAnswer) ? question.selectedAnswer : null
+        ));
+      }
       
       if (candidateData.prediction && candidateData.prediction.success_score) {
         setPrediction(candidateData.prediction);
@@ -121,6 +130,35 @@ const CandidateDetails = () => {
         alert("Failed to submit rating.");
     } finally {
         setIsRatingSubmitting(false);
+    }
+  };
+
+  const startVerificationTest = async () => {
+    try {
+      setTestLoading(true);
+      const data = await candidateAPI.startVerificationTest(id);
+      setCandidate(current => ({ ...current, verificationTest: data.verificationTest }));
+      setTestAnswers(Array(data.verificationTest.questions.length).fill(null));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Unable to start the verification test.');
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const submitVerificationTest = async () => {
+    if (testAnswers.some(answer => answer === null)) {
+      setError('Answer every verification question before submitting.');
+      return;
+    }
+    try {
+      setTestLoading(true);
+      const data = await candidateAPI.submitVerificationTest(id, testAnswers);
+      setCandidate(current => ({ ...current, verificationTest: data.verificationTest }));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Unable to submit the verification test.');
+    } finally {
+      setTestLoading(false);
     }
   };
 
@@ -304,6 +342,66 @@ const CandidateDetails = () => {
               </div>
             </GlowCard>
           )}
+
+          <GlowCard className="p-6 border border-indigo-100">
+            <h2 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-indigo-600" />
+              Mandatory Resume Verification Test
+            </h2>
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              This skill-based check must be passed at 70% or higher before the candidate can move to Interview or Offer.
+            </p>
+
+            {candidate.verificationTest?.status === 'Passed' ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 font-semibold">
+                Passed — {candidate.verificationTest.score}% verified. Candidate is eligible for Interview and Offer stages.
+              </div>
+            ) : candidate.verificationTest?.questions?.length ? (
+              <div className="space-y-5">
+                {candidate.verificationTest.status === 'Failed' && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800 font-semibold">
+                    Previous attempt: {candidate.verificationTest.score}%. A score of 70% is required. Start a new attempt when ready.
+                  </div>
+                )}
+                {candidate.verificationTest.status !== 'Failed' && candidate.verificationTest.questions.map((item, questionIndex) => (
+                  <fieldset key={questionIndex} className="border-t border-slate-100 pt-4 first:border-t-0 first:pt-0">
+                    <legend className="text-sm font-semibold text-slate-800 mb-2">
+                      {questionIndex + 1}. {item.question}
+                    </legend>
+                    <p className="text-[10px] uppercase tracking-wide font-bold text-indigo-600 mb-2">Claimed skill: {item.skill}</p>
+                    <div className="space-y-2">
+                      {item.options.map((option, optionIndex) => (
+                        <label key={optionIndex} className="flex gap-2 items-start text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`verification-${questionIndex}`}
+                            checked={testAnswers[questionIndex] === optionIndex}
+                            onChange={() => setTestAnswers(current => current.map((answer, index) => index === questionIndex ? optionIndex : answer))}
+                          />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ))}
+                {candidate.verificationTest.status !== 'Failed' ? (
+                  <button onClick={submitVerificationTest} disabled={testLoading} className="btn-primary text-sm disabled:opacity-50">
+                    {testLoading ? 'Submitting...' : 'Submit verification test'}
+                  </button>
+                ) : (
+                  <button onClick={startVerificationTest} disabled={testLoading} className="btn-secondary text-sm disabled:opacity-50">
+                    {testLoading ? 'Preparing...' : 'Start a new attempt'}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button onClick={startVerificationTest} disabled={testLoading} className="btn-primary text-sm disabled:opacity-50">
+                {testLoading ? 'Preparing test...' : 'Start required test'}
+              </button>
+            )}
+          </GlowCard>
+
+          <VoiceInterviewPractice candidate={candidate} />
 
           {/* Resume Raw Text */}
           {resumeText && (

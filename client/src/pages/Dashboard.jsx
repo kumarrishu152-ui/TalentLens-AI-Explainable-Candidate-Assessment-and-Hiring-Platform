@@ -9,6 +9,7 @@ import ResumeUploader from '../components/ResumeUploader';
 import AboutSection from '../components/AboutSection'; 
 import GlowCard from '../components/ui/GlowCard';
 import { candidateAPI, userAPI } from '../services/api';
+import VoiceInput from '../components/VoiceInput';
 
 const Dashboard = () => {
   const [candidates, setCandidates] = useState([]);
@@ -125,7 +126,7 @@ const Dashboard = () => {
       setCandidates(prev => prev.map(c => c._id === candidateId ? { ...c, pipelineStatus: newStatus } : c));
       await apiPatchStatus(candidateId, newStatus);
     } catch (err) {
-      alert("Failed to update status");
+      alert(err.response?.data?.error || "Failed to update status");
       fetchDashboardData();
     }
   };
@@ -139,7 +140,12 @@ const Dashboard = () => {
       },
       body: JSON.stringify({ status: newStatus })
     });
-    if (!response.ok) throw new Error("API status patch failed");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const error = new Error(body.error || "API status patch failed");
+      error.response = { data: body };
+      throw error;
+    }
     return response.json();
   };
 
@@ -348,13 +354,16 @@ const Dashboard = () => {
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
                 <Search className="w-3.5 h-3.5" /> Search
               </label>
-              <input 
-                  type="text" 
-                  className="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary-500 transition-all font-medium"
-                  placeholder="Search name or email..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <div className="flex gap-2">
+                <input 
+                    type="text" 
+                    className="min-w-0 flex-1 p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary-500 transition-all font-medium"
+                    placeholder="Search name or email..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <VoiceInput label="Speak a candidate name or email to search" onTranscript={setSearchQuery} />
+              </div>
           </div>
           <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Pipeline Status</label>
@@ -553,6 +562,7 @@ const Dashboard = () => {
       <ResumeUploader 
         isOpen={isUploadModalOpen} 
         onClose={() => setIsUploadModalOpen(false)} 
+        onUploadComplete={fetchDashboardData}
       />
 
       {/* 2. Upgraded Config Tuning Modal */}

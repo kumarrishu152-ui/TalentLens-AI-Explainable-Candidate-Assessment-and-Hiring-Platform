@@ -1,9 +1,12 @@
 const Candidate = require('../models/Candidate');
 const JobConfig  = require('../models/JobConfig');
 const User       = require('../models/User');
-const { extractTextFromPDF }    = require('../utils/resumeParser');
+const { extractResumeText }    = require('../utils/resumeParser');
+const { getGeminiApiKey } = require('../utils/geminiKey');
+const { parseResumeLocally } = require('../utils/localResumeParser');
 const { parseResumeWithGemini, getSkillsWithEmbeddings } = require('../services/geminiService');
 const { getPrediction, tuneWeights } = require('../services/mlService');
+const { buildVerificationQuestions } = require('../utils/verificationTest');
 
 const escapeRegExp = (string) => {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -30,27 +33,42 @@ exports.uploadResume = async (req, res) => {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
+        const geminiApiKey = await getGeminiApiKey(req.user.id);
         let resumeText = '';
         let parsedData = null;
 
         try {
-            resumeText = await extractTextFromPDF(req.file.buffer);
+            resumeText = await extractResumeText(req.file.buffer, req.file.mimetype, req.file.originalname);
         } catch (err) {
             console.error('PDF text extraction failed, falling back to multimodal parsing:', err.message);
         }
 
         if (!resumeText || resumeText.length < 50) {
-            parsedData = await parseResumeWithGemini(req.file.buffer, true);
+            const isPdf = req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
+            if (!isPdf) {
+                return res.status(400).json({ error: 'This DOCX file contains too little readable text. Upload a text-based PDF or DOCX resume.' });
+            }
+            parsedData = await parseResumeWithGemini(req.file.buffer, true, geminiApiKey);
             resumeText = `[Scanned PDF]\nName: ${parsedData.name}\nEmail: ${parsedData.email}\nSummary: ${parsedData.summary}`;
         } else {
-            parsedData = await parseResumeWithGemini(resumeText, false);
+            try {
+                parsedData = await parseResumeWithGemini(resumeText, false, geminiApiKey);
+            } catch (aiError) {
+                console.warn('Gemini parsing unavailable; using local resume parser:', aiError.message);
+                parsedData = parseResumeLocally(resumeText);
+            }
         }
 
         const duplicate     = await checkDuplicate(req.user.id, parsedData.email, parsedData.name);
         const duplicateFound = !!duplicate;
 
         const tags         = (parsedData.skills || []).map(s => s.tag.toLowerCase().trim());
-        const skillEmbeddings = await getSkillsWithEmbeddings(tags);
+        let skillEmbeddings = [];
+        try {
+            skillEmbeddings = await getSkillsWithEmbeddings(tags, geminiApiKey);
+        } catch (embeddingError) {
+            console.warn('Gemini embeddings unavailable; continuing without semantic embeddings:', embeddingError.message);
+        }
         const skillEvidence = (parsedData.skills_evidence || []).map(se => ({
             tag:   se.tag.toLowerCase().trim(),
             quote: se.quote
@@ -198,6 +216,12 @@ exports.updatePipelineStatus = async (req, res) => {
         const candidate = await Candidate.findOne({ _id: req.params.id, user: req.user.id });
         if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
 
+        if (['Interview', 'Offer'].includes(status) && candidate.verificationTest?.status !== 'Passed') {
+            return res.status(409).json({
+                error: 'Candidate must pass the resume verification test before moving to Interview or Offer.'
+            });
+        }
+
         candidate.pipelineStatus = status;
         await candidate.save();
         res.json(candidate);
@@ -234,6 +258,62 @@ exports.deleteCandidate = async (req, res) => {
         if (!candidate) return res.status(404).json({ error: 'Candidate not found' });
         res.json({ message: 'Candidate deleted successfully' });
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+const publicVerificationTest = (verificationTest) => ({
+    status: verificationTest.status,
+    score: verificationTest.score,
+    completedAt: verificationTest.completedAt,
+    questions: (verificationTest.questions || []).map(({ skill, question, options, selectedAnswer }) => ({
+        skill, question, options, selectedAnswer
+    }))
+});
+
+exports.startVerificationTest = async (req, res) => {
+    try {
+        const candidate = await Candidate.findOne({ _id: req.params.id, user: req.user.id });
+        if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+
+        candidate.verificationTest = {
+            status: 'Not started',
+            questions: buildVerificationQuestions(candidate.skills),
+            score: null,
+            completedAt: null
+        };
+        await candidate.save();
+        res.json({ verificationTest: publicVerificationTest(candidate.verificationTest) });
+    } catch (error) {
+        console.error('Verification test setup error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.submitVerificationTest = async (req, res) => {
+    try {
+        const { answers } = req.body;
+        const candidate = await Candidate.findOne({ _id: req.params.id, user: req.user.id });
+        if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+        const questions = candidate.verificationTest?.questions || [];
+        if (!questions.length) return res.status(400).json({ error: 'Start the verification test before submitting it.' });
+        if (!Array.isArray(answers) || answers.length !== questions.length || answers.some(answer => !Number.isInteger(answer))) {
+            return res.status(400).json({ error: 'Answer every verification question before submitting.' });
+        }
+
+        let correct = 0;
+        questions.forEach((question, index) => {
+            question.selectedAnswer = answers[index];
+            if (question.correctAnswer === answers[index]) correct += 1;
+        });
+        const score = Math.round((correct / questions.length) * 100);
+        candidate.verificationTest.status = score >= 70 ? 'Passed' : 'Failed';
+        candidate.verificationTest.score = score;
+        candidate.verificationTest.completedAt = new Date();
+        await candidate.save();
+        res.json({ verificationTest: publicVerificationTest(candidate.verificationTest) });
+    } catch (error) {
+        console.error('Verification test submit error:', error);
         res.status(500).json({ error: error.message });
     }
 };

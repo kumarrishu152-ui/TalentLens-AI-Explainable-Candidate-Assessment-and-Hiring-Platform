@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Brain, PlusCircle, LogOut } from 'lucide-react'; 
 import { useAuth } from '../context/AuthContext'; 
+import VoiceInput from './VoiceInput';
 
 const Navbar = () => {
   const { user, logout } = useAuth(); 
@@ -10,6 +11,17 @@ const Navbar = () => {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleVoiceCommand = (spokenCommand) => {
+    const command = spokenCommand.toLowerCase();
+    if (command.includes('new job') || command.includes('create job') || command.includes('job setup')) {
+      navigate('/create-job');
+    } else if (command.includes('dashboard') || command.includes('candidates') || command.includes('home')) {
+      navigate('/');
+    } else if (command.includes('sign out') || command.includes('log out')) {
+      handleLogout();
+    }
   };
 
   return (
@@ -23,7 +35,7 @@ const Navbar = () => {
               <Brain className="w-6 h-6 text-white" />
             </div>
             <span className="text-xl font-bold text-slate-900 hidden sm:block">
-              RecruitAI
+              TalentLens AI
             </span>
           </Link>
 
@@ -38,6 +50,12 @@ const Navbar = () => {
                     <PlusCircle className="w-5 h-5" />
                     <span className="hidden md:inline">New Job Config</span>
                 </Link>
+
+                <VoiceInput
+                  label="Voice command: dashboard, new job, or sign out"
+                  onTranscript={handleVoiceCommand}
+                  className="hidden sm:inline-flex"
+                />
 
                 {/* Divider */}
                 <div className="h-6 w-px bg-slate-300 mx-2"></div>

@@ -62,6 +62,16 @@ export const candidateAPI = {
     return response.data;
   },
 
+  startVerificationTest: async (id) => {
+    const response = await api.post(`/candidates/${id}/verification-test/start`);
+    return response.data;
+  },
+
+  submitVerificationTest: async (id, answers) => {
+    const response = await api.post(`/candidates/${id}/verification-test/submit`, { answers });
+    return response.data;
+  },
+
   // Delete candidate
   deleteCandidate: async (id) => {
     const response = await api.delete(`/candidates/${id}`);

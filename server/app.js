@@ -15,6 +15,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Simple health endpoint for checking that the API is running in a browser.
+app.get('/', (req, res) => {
+    res.status(200).json({ status: 'ok', message: 'TalentLens AI API is running' });
+});
+
 // Database
 connectDB();
 

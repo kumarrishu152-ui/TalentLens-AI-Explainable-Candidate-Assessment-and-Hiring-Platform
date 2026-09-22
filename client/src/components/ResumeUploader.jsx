@@ -3,7 +3,7 @@ import { X, Upload, FileText, Loader2, CheckCircle, AlertCircle, RefreshCw, Tras
 import { candidateAPI } from '../services/api';
 import GlowCard from './ui/GlowCard';
 
-const ResumeUploader = ({ isOpen, onClose }) => {
+const ResumeUploader = ({ isOpen, onClose, onUploadComplete }) => {
   const [dragActive, setDragActive] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -36,12 +36,19 @@ const ResumeUploader = ({ isOpen, onClose }) => {
     if (e.target.files && e.target.files.length > 0) {
       addFiles(e.target.files);
     }
+    // Permit selecting the same file again after removing it or retrying it.
+    e.target.value = '';
   };
 
   const addFiles = (selectedFiles) => {
-    const validFiles = Array.from(selectedFiles).filter(f => f.type === 'application/pdf');
-    if (validFiles.length < selectedFiles.length) {
-      alert("Only PDF files are supported");
+    const selected = Array.from(selectedFiles);
+    const validFiles = selected.filter(file =>
+      file.type === 'application/pdf'
+      || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || /\.(pdf|docx)$/i.test(file.name)
+    );
+    if (validFiles.length < selected.length) {
+      alert('Only PDF and DOCX files are supported.');
     }
     
     const newItems = validFiles.map(f => ({
@@ -53,7 +60,10 @@ const ResumeUploader = ({ isOpen, onClose }) => {
       rawFile: f
     }));
     
-    setFiles(prev => [...prev, ...newItems]);
+    setFiles(prev => {
+      const existing = new Set(prev.map(file => `${file.name}-${file.size}-${file.rawFile.lastModified}`));
+      return [...prev, ...newItems.filter(file => !existing.has(`${file.name}-${file.size}-${file.rawFile.lastModified}`))];
+    });
   };
 
   const handleRemove = (id) => {
@@ -66,7 +76,8 @@ const ResumeUploader = ({ isOpen, onClose }) => {
 
     setUploading(true);
 
-    await Promise.all(toUpload.map(async (item) => {
+    // Parse one file at a time to avoid Gemini rate-limit errors during bulk uploads.
+    for (const item of toUpload) {
       setFiles(prev => prev.map(f => f.id === item.id ? { ...f, status: 'parsing', errorMsg: '' } : f));
       
       try {
@@ -76,7 +87,7 @@ const ResumeUploader = ({ isOpen, onClose }) => {
         const errorMsg = err.response?.data?.message || err.response?.data?.error || 'Failed to parse resume';
         setFiles(prev => prev.map(f => f.id === item.id ? { ...f, status: 'error', errorMsg } : f));
       }
-    }));
+    }
 
     setUploading(false);
   };
@@ -90,7 +101,7 @@ const ResumeUploader = ({ isOpen, onClose }) => {
     }
     onClose();
     if (hasSuccess) {
-      window.location.reload();
+      onUploadComplete?.();
     }
   };
 
@@ -129,14 +140,14 @@ const ResumeUploader = ({ isOpen, onClose }) => {
           >
             <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
             <p className="text-slate-600 text-sm">
-              Drag and drop PDF resumes here, or <span className="text-primary-600 font-medium">browse files</span>
+              Drag and drop PDF or DOCX resumes here, or <span className="text-primary-600 font-medium">browse files</span>
             </p>
-            <p className="text-xs text-slate-400 mt-1">Select one or multiple PDF files</p>
+            <p className="text-xs text-slate-400 mt-1">Select one or multiple PDF or DOCX files (up to 10 MB each)</p>
             
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               multiple
               onChange={handleChange}
               className="hidden"

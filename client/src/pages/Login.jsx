@@ -16,13 +16,22 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const trimmedUsername = username.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedUsername || !trimmedPassword) {
+      setError('Username and password are required.');
+      return;
+    }
+
     setError('');
     setLoading(true);
     try {
-      const data = isLogin 
-        ? await userAPI.login(username, password)
-        : await userAPI.register(username, password);
-      login(data.token, data.user); 
+      const payload = isLogin
+        ? await userAPI.login(trimmedUsername, trimmedPassword)
+        : await userAPI.register(trimmedUsername, trimmedPassword);
+
+      login(payload.token, payload.user);
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');

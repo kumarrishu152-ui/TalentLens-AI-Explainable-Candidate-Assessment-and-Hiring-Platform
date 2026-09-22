@@ -1,5 +1,6 @@
 const JobConfig = require('../models/JobConfig');
 const { extractTextFromPDF }    = require('../utils/resumeParser');
+const { getGeminiApiKey } = require('../utils/geminiKey');
 const { parseResumeWithGemini, getSkillsWithEmbeddings } = require('../services/geminiService');
 
 const getImportanceWeight = (importance) => {
@@ -43,7 +44,8 @@ exports.createJobConfig = async (req, res) => {
 
         try {
             const tagsToEmbed = finalSkillsList.map(s => s.tag);
-            const embeddedList = await getSkillsWithEmbeddings(tagsToEmbed);
+            const geminiApiKey = await getGeminiApiKey(req.user.id);
+            const embeddedList = await getSkillsWithEmbeddings(tagsToEmbed, geminiApiKey);
             finalSkillsList.forEach(s => {
                 const match = embeddedList.find(e => e.tag === s.tag);
                 if (match) s.embedding = match.embedding;
@@ -155,7 +157,8 @@ exports.updateJobConfig = async (req, res) => {
                 const toEmbed = mappedSkills.filter(s => !s.embedding || s.embedding.length === 0);
                 if (toEmbed.length > 0) {
                     const tagsToEmbed = toEmbed.map(s => s.tag);
-                    const embeddedList = await getSkillsWithEmbeddings(tagsToEmbed);
+                    const geminiApiKey = await getGeminiApiKey(req.user.id);
+                    const embeddedList = await getSkillsWithEmbeddings(tagsToEmbed, geminiApiKey);
                     mappedSkills.forEach(s => {
                         const match = embeddedList.find(e => e.tag === s.tag);
                         if (match) s.embedding = match.embedding;
@@ -225,6 +228,7 @@ exports.parseBenchmarks = async (req, res) => {
         }
 
         let totalExp = 0;
+        const geminiApiKey = await getGeminiApiKey(req.user.id);
         let fileCount = 0;
         const skillFrequencies = {};
         const skillCategories  = {};
@@ -237,9 +241,9 @@ exports.parseBenchmarks = async (req, res) => {
                 let parsed = null;
 
                 if (!text || text.length < 50) {
-                    parsed = await parseResumeWithGemini(file.buffer, true);
+                    parsed = await parseResumeWithGemini(file.buffer, true, geminiApiKey);
                 } else {
-                    parsed = await parseResumeWithGemini(text, false);
+                    parsed = await parseResumeWithGemini(text, false, geminiApiKey);
                 }
 
                 totalExp += parsed.years_experience || 0;

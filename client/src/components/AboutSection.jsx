@@ -10,7 +10,7 @@ const AboutSection = () => {
         {/* Title / Name */}
         <div className="space-y-2">
           <h3 className="text-2xl font-bold text-slate-900 flex items-center justify-center gap-2">
-            Created by <span className="text-primary-600">Arya Dasgupta</span>
+            Created by <span className="text-primary-600">Praveen</span>
           </h3>
           <p className="text-slate-500 text-sm max-w-md mx-auto">
             Built with MERN Stack + Python & Gemini AI to revolutionize the recruitment process.
@@ -21,7 +21,7 @@ const AboutSection = () => {
         <div className="flex items-center justify-center gap-6 mt-4">
           {/* LinkedIn */}
           <a 
-            href="https://www.linkedin.com/in/aryadasgupta2004/" 
+            href="https://www.linkedin.com/in/praveen-kumar-288b9135b/" 
             target="_blank" 
             rel="noopener noreferrer"
             className="group flex flex-col items-center gap-1"
@@ -34,7 +34,7 @@ const AboutSection = () => {
 
           {/* GitHub */}
           <a 
-            href="https://github.com/AryaXDG" 
+            href="https://github.com/kumarrishu152-ui" 
             target="_blank" 
             rel="noopener noreferrer"
             className="group flex flex-col items-center gap-1"
@@ -47,7 +47,7 @@ const AboutSection = () => {
 
           {/* Email */}
           <a 
-            href="mailto:aryadasgupta2004@gmail.com"
+            href="mailto:kumarrishu152@gmail.com"
             className="group flex flex-col items-center gap-1"
           >
             <div className="p-3 bg-red-50 text-red-600 rounded-full group-hover:bg-red-500 group-hover:text-white transition-all duration-300 shadow-sm group-hover:shadow-red-200 group-hover:scale-110">

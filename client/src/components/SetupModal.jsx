@@ -35,7 +35,7 @@ const SetupModal = () => {
           </div>
           <h2 className="text-2xl font-bold text-slate-900">Setup Your API Key</h2>
           <p className="text-slate-600 mt-2">
-            RecruitAI uses Google Gemini. Please enter your API Key to continue.
+            TalentLens AI uses Google Gemini. Please enter your API Key to continue.
           </p>
         </div>
 

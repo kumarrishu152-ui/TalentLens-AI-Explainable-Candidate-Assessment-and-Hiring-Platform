@@ -1,6 +1,6 @@
-# RecruitAI
+# TalentLens AI
 
-RecruitAI is a self-hosted Applicant Tracking System (ATS) that scores and ranks resumes against a job profile instead of just keyword-matching them. It's a MERN app (MongoDB, Express, React, Node) that uses Google Gemini for resume parsing and skill embeddings, and a scoring engine that runs entirely on the Node server - no separate ML microservice.
+TalentLens AI is a self-hosted Applicant Tracking System (ATS) that scores and ranks resumes against a job profile instead of just keyword-matching them. It's a MERN app (MongoDB, Express, React, Node) that uses Google Gemini for resume parsing and skill embeddings, and a scoring engine that runs entirely on the Node server - no separate ML microservice.
 
 The goal was to build something closer to how a hiring team actually thinks about a resume: which skills matter most for this specific role, whether a candidate's experience backs up their claimed skills, and how confident the system is when it says "this person is a good match."
 
@@ -164,8 +164,8 @@ All routes except `/api/auth/register` and `/api/auth/login` require a `Authoriz
 
 ## Author
 
-Built by Arya Dasgupta.
+Built by Praveen.
 
-- GitHub: [AryaXDG](https://github.com/AryaXDG)
-- LinkedIn: [aryadasgupta2004](https://www.linkedin.com/in/aryadasgupta2004/)
-- Email: aryadasgupta2004@gmail.com
+- GitHub: [kumarrishu152-ui](https://github.com/kumarrishu152-ui)
+- LinkedIn: [Praveen Kumar](https://www.linkedin.com/in/praveen-kumar-288b9135b/)
+- Email: kumarrishu152@gmail.com

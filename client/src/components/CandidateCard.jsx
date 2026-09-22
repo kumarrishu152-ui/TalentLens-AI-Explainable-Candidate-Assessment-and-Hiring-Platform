@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, GraduationCap, ChevronRight, AlertTriangle, Layers } from 'lucide-react';
+import { Briefcase, GraduationCap, ChevronRight, AlertTriangle, Layers, ClipboardCheck } from 'lucide-react';
 import GlowCard from './ui/GlowCard'; 
 
 const CandidateCard = ({ candidate, blindMode = false }) => {
@@ -55,6 +55,10 @@ const CandidateCard = ({ candidate, blindMode = false }) => {
           <div className="flex items-center space-x-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
             <Briefcase className="w-3.5 h-3.5 text-primary-500" />
             <span>{expYears} yrs exp</span>
+          </div>
+          <div className={`flex items-center space-x-1 px-2 py-1 rounded border ${candidate.verificationTest?.status === 'Passed' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            <span>{candidate.verificationTest?.status === 'Passed' ? 'Test passed' : 'Test required'}</span>
           </div>
           <div className="flex items-center space-x-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
             <GraduationCap className="w-3.5 h-3.5 text-primary-500" />

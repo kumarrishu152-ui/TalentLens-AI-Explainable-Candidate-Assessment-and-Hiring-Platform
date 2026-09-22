@@ -5,47 +5,59 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
   const [showKeyModal, setShowKeyModal] = useState(false);
 
   useEffect(() => {
     const initAuth = async () => {
-      if (token) {
-        try {
-          // Verify token and get user details (including if key exists)
-          const userData = await userAPI.me(); 
-          setUser(userData);
-          
-          // Trigger modal if key is missing (assuming backend sends hasApiKey boolean)
-          if (userData && !userData.hasApiKey) {
-            setShowKeyModal(true);
-          }
-        } catch (err) {
-          console.error("Auth check failed", err);
-          logout();
-        }
+      const storedToken = localStorage.getItem('token');
+
+      if (!storedToken) {
+        setUser(null);
+        setShowKeyModal(false);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      try {
+        const userData = await userAPI.me();
+        setUser(userData || null);
+        setShowKeyModal(Boolean(userData && userData.hasApiKey === false));
+      } catch (err) {
+        console.error('Auth check failed', err);
+        localStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
+        setShowKeyModal(false);
+      } finally {
+        setLoading(false);
+      }
     };
+
     initAuth();
-  }, [token]);
+  }, []);
 
   const login = (newToken, userData) => {
+    if (!newToken) {
+      throw new Error('Missing authentication token');
+    }
+
+    const normalizedUser = userData || {};
     localStorage.setItem('token', newToken);
     setToken(newToken);
-    setUser(userData);
-    if (!userData.hasApiKey) setShowKeyModal(true);
+    setUser(normalizedUser);
+    setShowKeyModal(normalizedUser.hasApiKey === false);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
+    setShowKeyModal(false);
   };
 
   const updateApiKeyStatus = () => {
-    // Called after successful key save
     if (user) {
       setUser({ ...user, hasApiKey: true });
       setShowKeyModal(false);
