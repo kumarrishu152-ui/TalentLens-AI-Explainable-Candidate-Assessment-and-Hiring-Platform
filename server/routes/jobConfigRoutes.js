@@ -4,7 +4,8 @@ const multer = require('multer');
 const auth = require('../middleware/auth'); 
 const {
     createJobConfig, 
-    getActiveConfig, 
+    getActiveConfig,
+    getPublicJobs,
     updateJobConfig,
     rollbackJobConfig,
     parseBenchmarks
@@ -17,6 +18,7 @@ const upload = multer({ storage: storage });
 router.post('/', auth, upload.array('benchmark_resumes', 12), createJobConfig);
 router.post('/parse-benchmarks', auth, upload.array('benchmark_resumes', 12), parseBenchmarks);
 router.get('/active', auth, getActiveConfig);
+router.get('/public', auth, getPublicJobs);
 
 // Feature 3: Route to update weights/filters of the active config
 router.put('/active', auth, updateJobConfig);

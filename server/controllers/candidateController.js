@@ -1,6 +1,7 @@
 const Candidate = require('../models/Candidate');
 const JobConfig  = require('../models/JobConfig');
 const User       = require('../models/User');
+const Application = require('../models/Application');
 const { extractResumeText }    = require('../utils/resumeParser');
 const { getGeminiApiKey } = require('../utils/geminiKey');
 const { parseResumeLocally } = require('../utils/localResumeParser');
@@ -314,6 +315,82 @@ exports.submitVerificationTest = async (req, res) => {
         res.json({ verificationTest: publicVerificationTest(candidate.verificationTest) });
     } catch (error) {
         console.error('Verification test submit error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.applyToJob = async (req, res) => {
+    try {
+        const { jobId, jobTitle, company, salary } = req.body;
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        if (!jobTitle) {
+            return res.status(400).json({ error: 'Job title is required.' });
+        }
+
+        let recruiterId = null;
+        if (jobId) {
+            const jobConfig = await JobConfig.findById(jobId).select('userId');
+            if (jobConfig) recruiterId = jobConfig.userId;
+        }
+
+        const candidate = await Candidate.findOne({ user: req.user.id }).sort({ createdAt: -1 });
+        const application = await Application.findOneAndUpdate(
+            {
+                userId: req.user.id,
+                jobTitle,
+                company: company || '',
+                jobId: jobId || null
+            },
+            {
+                userId: req.user.id,
+                recruiterId,
+                jobId: jobId || null,
+                jobTitle,
+                company: company || '',
+                salary: salary || 'Competitive',
+                candidateName: candidate?.name || 'Candidate',
+                candidateEmail: candidate?.email || '',
+                status: 'Submitted'
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        res.status(201).json({
+            message: 'Application submitted successfully.',
+            application
+        });
+    } catch (error) {
+        console.error('Apply to job error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getMyApplications = async (req, res) => {
+    try {
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const apps = await Application.find({ userId: req.user.id }).sort({ createdAt: -1 });
+        res.json(apps);
+    } catch (error) {
+        console.error('Get my applications error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getRecruiterApplications = async (req, res) => {
+    try {
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const applications = await Application.find({ recruiterId: req.user.id }).sort({ createdAt: -1 }).lean();
+        res.json(applications);
+    } catch (error) {
+        console.error('Get recruiter applications error:', error);
         res.status(500).json({ error: error.message });
     }
 };

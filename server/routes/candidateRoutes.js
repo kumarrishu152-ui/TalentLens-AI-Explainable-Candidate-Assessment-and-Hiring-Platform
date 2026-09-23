@@ -11,7 +11,10 @@ const {
     rateCandidate,
     updatePipelineStatus,
     startVerificationTest,
-    submitVerificationTest
+    submitVerificationTest,
+    applyToJob,
+    getMyApplications,
+    getRecruiterApplications
 } = require('../controllers/candidateController');
 
 // Configure Multer to store file in memory for immediate parsing
@@ -32,6 +35,9 @@ const upload = multer({
 
 // Apply 'auth' middleware to ALL routes here
 router.post('/upload', auth, upload.single('resume'), uploadResume);
+router.post('/apply', auth, applyToJob);
+router.get('/my-applications', auth, getMyApplications);
+router.get('/applications', auth, getRecruiterApplications);
 router.post('/:id/predict', auth, predictCandidate);
 
 // Rate Candidate Route

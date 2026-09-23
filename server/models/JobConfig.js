@@ -23,6 +23,18 @@ const JobConfigSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  salary: {
+    type: String,
+    default: '₹18L - ₹30L'
+  },
+  location: {
+    type: String,
+    default: 'Remote / Flexible'
+  },
+  jobType: {
+    type: String,
+    default: 'Full-time'
+  },
   // Soft Weights for High-level Categories
   experienceWeight: {
     type: Number, // 0-100

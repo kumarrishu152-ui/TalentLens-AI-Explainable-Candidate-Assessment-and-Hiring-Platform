@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Brain, Lock, User } from 'lucide-react';
+import { Brain, Lock, User, Briefcase, UserCircle2 } from 'lucide-react';
 import { userAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import GlowCard from '../components/ui/GlowCard';
+
+const roles = [
+  { id: 'recruiter', label: 'Recruiter', icon: Briefcase, description: 'Manage hiring pipeline and shortlists' },
+  { id: 'candidate', label: 'Candidate', icon: UserCircle2, description: 'Track applications and interview prep' }
+];
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('recruiter');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -28,11 +34,11 @@ const Login = () => {
     setLoading(true);
     try {
       const payload = isLogin
-        ? await userAPI.login(trimmedUsername, trimmedPassword)
-        : await userAPI.register(trimmedUsername, trimmedPassword);
+        ? await userAPI.login(trimmedUsername, trimmedPassword, role)
+        : await userAPI.register(trimmedUsername, trimmedPassword, role);
 
-      login(payload.token, payload.user);
-      navigate('/');
+      login(payload.token, payload.user || { username: trimmedUsername, role });
+      navigate(role === 'candidate' ? '/candidate' : '/recruiter');
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
@@ -41,16 +47,35 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <GlowCard className="w-full max-w-md p-8 shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+      <GlowCard className="w-full max-w-xl p-8 shadow-xl">
         <div className="flex justify-center mb-6">
           <div className="bg-primary-600 p-3 rounded-xl">
             <Brain className="w-8 h-8 text-white" />
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-center text-slate-900 mb-8">
+        <h2 className="text-2xl font-bold text-center text-slate-900 mb-6">
           {isLogin ? 'Welcome Back' : 'Create Account'}
         </h2>
+
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {roles.map(({ id, label, icon: Icon, description }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setRole(id)}
+              className={`rounded-xl border p-3 text-left transition ${role === id
+                ? 'border-primary-500 bg-primary-50 shadow-sm'
+                : 'border-slate-200 bg-white hover:border-slate-300'}`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Icon className={`w-5 h-5 ${role === id ? 'text-primary-600' : 'text-slate-500'}`} />
+                <span className="font-semibold text-slate-800">{label}</span>
+              </div>
+              <p className="text-xs text-slate-500">{description}</p>
+            </button>
+          ))}
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative">
@@ -83,7 +108,7 @@ const Login = () => {
           )}
 
           <button type="submit" disabled={loading} className="w-full btn-primary py-3 font-bold text-lg disabled:opacity-60 disabled:cursor-not-allowed">
-            {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Sign Up')}
+            {loading ? 'Please wait...' : (isLogin ? `Sign In as ${roles.find(r => r.id === role)?.label}` : `Create ${roles.find(r => r.id === role)?.label} Account`)}
           </button>
         </form>
 

@@ -22,6 +22,9 @@ const JobSetup = () => {
     minExperience: 0,
     targetDegree: 'Bachelors',
     targetField: '',
+    salary: '₹18L - ₹30L',
+    location: 'Remote / Flexible',
+    jobType: 'Full-time',
     experienceWeight: 40,
     skillsWeight: 40,
     educationWeight: 20,
@@ -241,6 +244,43 @@ const JobSetup = () => {
                               <VoiceInput label="Speak the job title" onTranscript={text => setFormData(current => ({ ...current, jobTitle: text }))} />
                             </div>
                             <p className="text-xs text-slate-500 mt-2">Use Voice to dictate the job title, criteria field, and skills.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Salary</label>
+                                <input
+                                    type="text"
+                                    value={formData.salary}
+                                    onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                                    placeholder="₹18L - ₹30L"
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-slate-50 focus:bg-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+                                <input
+                                    type="text"
+                                    value={formData.location}
+                                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                    placeholder="Remote / Flexible"
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-slate-50 focus:bg-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Job Type</label>
+                                <select
+                                    value={formData.jobType}
+                                    onChange={(e) => setFormData({ ...formData, jobType: e.target.value })}
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-slate-50 focus:bg-white"
+                                >
+                                    <option value="Full-time">Full-time</option>
+                                    <option value="Remote">Remote</option>
+                                    <option value="Hybrid">Hybrid</option>
+                                    <option value="Contract">Contract</option>
+                                    <option value="Internship">Internship</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div className="pt-4">

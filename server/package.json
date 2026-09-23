@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node app.js",
     "dev": "node --watch app.js",
-    "test": "node --check app.js"
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",

@@ -4,7 +4,10 @@ import { userAPI } from '../services/api';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const storedUser = localStorage.getItem('user');
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
   const [showKeyModal, setShowKeyModal] = useState(false);
@@ -22,11 +25,17 @@ export const AuthProvider = ({ children }) => {
 
       try {
         const userData = await userAPI.me();
-        setUser(userData || null);
+        const normalizedUser = {
+          ...(userData || {}),
+          role: (userData && userData.role) ? userData.role : 'recruiter'
+        };
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
+        setUser(normalizedUser || null);
         setShowKeyModal(Boolean(userData && userData.hasApiKey === false));
       } catch (err) {
         console.error('Auth check failed', err);
         localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setToken(null);
         setUser(null);
         setShowKeyModal(false);
@@ -43,8 +52,12 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Missing authentication token');
     }
 
-    const normalizedUser = userData || {};
+    const normalizedUser = {
+      ...(userData || {}),
+      role: (userData && userData.role) ? userData.role : 'recruiter'
+    };
     localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(normalizedUser));
     setToken(newToken);
     setUser(normalizedUser);
     setShowKeyModal(normalizedUser.hasApiKey === false);
@@ -52,6 +65,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setToken(null);
     setUser(null);
     setShowKeyModal(false);
@@ -59,7 +73,9 @@ export const AuthProvider = ({ children }) => {
 
   const updateApiKeyStatus = () => {
     if (user) {
-      setUser({ ...user, hasApiKey: true });
+      const updatedUser = { ...user, hasApiKey: true };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
       setShowKeyModal(false);
     }
   };

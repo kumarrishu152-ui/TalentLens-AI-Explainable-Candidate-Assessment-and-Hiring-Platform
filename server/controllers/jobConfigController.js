@@ -62,6 +62,9 @@ exports.createJobConfig = async (req, res) => {
             minExperience:   parseInt(configData.minExperience) || 0,
             targetDegree:    configData.targetDegree || 'Bachelors',
             targetField:     configData.targetField  || '',
+            salary:          configData.salary || configData.salaryRange || '₹18L - ₹30L',
+            location:        configData.location || 'Remote / Flexible',
+            jobType:         configData.jobType || 'Full-time',
             experienceWeight,
             skillsWeight,
             educationWeight,
@@ -98,6 +101,56 @@ exports.getActiveConfig = async (req, res) => {
         res.json(config || null);
     } catch (error) {
         console.error('Error fetching active config:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getPublicJobs = async (req, res) => {
+    try {
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const configs = await JobConfig.find({ isActive: true })
+            .sort({ createdAt: -1 })
+            .populate('userId', 'username')
+            .lean();
+
+        const jobs = configs.map((config) => {
+            const skillTags = (config.skillsList || []).slice(0, 6).map(s => s.tag).filter(Boolean);
+            const roleName = config.jobTitle || 'Open Role';
+            const companyLabel = config.userId && config.userId.username ? `${config.userId.username} Hiring` : 'Hiring Team';
+            const salaryRange = config.salary || config.salaryRange || '₹18L - ₹30L';
+            const location = config.location || 'Remote / Flexible';
+            const jobType = config.jobType || 'Full-time';
+            const requirements = [...new Set([
+                ...(config.minExperience ? [`Minimum ${config.minExperience}+ years of experience`] : []),
+                ...(config.targetDegree && config.targetDegree !== 'None' ? [`Degree preference: ${config.targetDegree}`] : []),
+                ...(config.targetField ? [`Field preference: ${config.targetField}`] : []),
+                ...skillTags.slice(0, 4).map(tag => `Experience with ${tag}`)
+            ])].slice(0, 4);
+
+            return {
+                _id: config._id,
+                role: roleName,
+                company: companyLabel,
+                type: jobType,
+                match: 'New role',
+                location,
+                salary: salaryRange,
+                tags: skillTags.length ? skillTags : ['Product', 'Collaboration', 'Execution'],
+                aiInsight: `${roleName} is configured to prioritize ${skillTags.slice(0, 3).join(', ') || 'core product and execution skills'} for screening.`,
+                description: `We are hiring for ${roleName}. This opportunity is opened and configured by the recruiter team with role-specific filters and skill priorities.`,
+                requirements,
+                hiringManager: config.userId && config.userId.username ? config.userId.username : 'Hiring Team',
+                responseTime: '2-5 days',
+                createdAt: config.createdAt
+            };
+        });
+
+        res.json(jobs);
+    } catch (error) {
+        console.error('Error fetching public jobs:', error);
         res.status(500).json({ error: error.message });
     }
 };

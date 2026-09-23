@@ -14,7 +14,7 @@ const generateToken = (user) => {
 // 1. Register User
 exports.register = async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, password, role = 'recruiter' } = req.body;
 
         // Check if user exists
         let user = await User.findOne({ username });
@@ -29,7 +29,8 @@ exports.register = async (req, res) => {
         // Create User
         user = new User({
             username,
-            password: hashedPassword
+            password: hashedPassword,
+            role
         });
 
         await user.save();
@@ -42,7 +43,8 @@ exports.register = async (req, res) => {
             token, 
             user: { 
                 id: user.id, 
-                username: user.username, 
+                username: user.username,
+                role: user.role,
                 hasApiKey: false 
             } 
         });
@@ -56,7 +58,7 @@ exports.register = async (req, res) => {
 // 2. Login User
 exports.login = async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, password, role } = req.body;
 
         // Check User
         const user = await User.findOne({ username });
@@ -70,6 +72,12 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
+        const effectiveRole = role && ['recruiter', 'candidate'].includes(role) ? role : user.role;
+        if (user.role !== effectiveRole) {
+            user.role = effectiveRole;
+            await user.save();
+        }
+
         // Return Token
         const token = generateToken(user);
         
@@ -81,6 +89,7 @@ exports.login = async (req, res) => {
             user: { 
                 id: user.id, 
                 username: user.username,
+                role: user.role,
                 hasApiKey 
             } 
         });
@@ -100,6 +109,7 @@ exports.getMe = async (req, res) => {
         res.json({ 
             id: user.id, 
             username: user.username,
+            role: user.role || 'recruiter',
             hasApiKey 
         });
     } catch (error) {

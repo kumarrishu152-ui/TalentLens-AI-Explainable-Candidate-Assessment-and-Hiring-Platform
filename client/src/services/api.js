@@ -100,6 +100,27 @@ export const candidateAPI = {
     return response.data;
   },
 
+  // Get live jobs created by recruiters for candidate dashboard
+  getPublicJobs: async () => {
+    const response = await api.get('/job-config/public');
+    return response.data;
+  },
+
+  applyToJob: async (payload) => {
+    const response = await api.post('/candidates/apply', payload);
+    return response.data;
+  },
+
+  getMyApplications: async () => {
+    const response = await api.get('/candidates/my-applications');
+    return response.data;
+  },
+
+  getRecruiterApplications: async () => {
+    const response = await api.get('/candidates/applications');
+    return response.data;
+  },
+
   // Update Config (Feature 3: Tweak Weights)
   updateJobConfig: async (data) => {
     const response = await api.put('/job-config/active', data);
@@ -115,12 +136,12 @@ export const candidateAPI = {
 
 // User & Auth APIs
 export const userAPI = {
-  login: async (username, password) => {
-    const response = await api.post('/auth/login', { username, password });
+  login: async (username, password, role = 'recruiter') => {
+    const response = await api.post('/auth/login', { username, password, role });
     return response.data;
   },
-  register: async (username, password) => {
-    const response = await api.post('/auth/register', { username, password });
+  register: async (username, password, role = 'recruiter') => {
+    const response = await api.post('/auth/register', { username, password, role });
     return response.data;
   },
   saveApiKey: async (apiKey) => {
