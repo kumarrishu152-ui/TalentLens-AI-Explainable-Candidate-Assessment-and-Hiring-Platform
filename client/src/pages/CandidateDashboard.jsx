@@ -249,7 +249,7 @@ const CandidateDashboard = () => {
             <input
               type="text"
               value={jobQuery}
-              onChange={(e) => setJobQuery(e.target.value)}
+              onChange={(e) => { setJobQuery(e.target.value); setActiveSearch(''); setSelectedJobIndex(0); }}
               placeholder="Job title, keywords, or company"
               className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
             />

@@ -80,10 +80,8 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        const effectiveRole = role && ['recruiter', 'candidate'].includes(role) ? role : user.role;
-        if (user.role !== effectiveRole) {
-            user.role = effectiveRole;
-            await user.save();
+        if (role && ['recruiter', 'candidate'].includes(role) && user.role !== role) {
+            return res.status(403).json({ message: `This account is registered as a ${user.role}. Sign in with a ${role} account instead.` });
         }
 
         // Return Token

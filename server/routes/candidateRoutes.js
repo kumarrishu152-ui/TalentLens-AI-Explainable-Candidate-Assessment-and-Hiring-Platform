@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const auth = require('../middleware/auth'); 
+const requireRole = require('../middleware/requireRole');
 const { 
     uploadResume, 
     predictCandidate, 
@@ -15,7 +16,8 @@ const {
     applyToJob,
     getMyApplications,
     getRecruiterApplications,
-    getMyProfile
+    getMyProfile,
+    updateApplicationStatus
 } = require('../controllers/candidateController');
 
 // Configure Multer to store file in memory for immediate parsing
@@ -36,22 +38,23 @@ const upload = multer({
 
 // Apply 'auth' middleware to ALL routes here
 router.post('/upload', auth, upload.single('resume'), uploadResume);
-router.post('/apply', auth, applyToJob);
-router.get('/my-applications', auth, getMyApplications);
-router.get('/my-profile', auth, getMyProfile);
-router.get('/applications', auth, getRecruiterApplications);
-router.post('/:id/predict', auth, predictCandidate);
+router.post('/apply', auth, requireRole('candidate'), applyToJob);
+router.get('/my-applications', auth, requireRole('candidate'), getMyApplications);
+router.get('/my-profile', auth, requireRole('candidate'), getMyProfile);
+router.get('/applications', auth, requireRole('recruiter'), getRecruiterApplications);
+router.patch('/applications/:id/status', auth, requireRole('recruiter'), updateApplicationStatus);
+router.post('/:id/predict', auth, requireRole('recruiter'), predictCandidate);
 
 // Rate Candidate Route
-router.post('/:id/rate', auth, rateCandidate);
+router.post('/:id/rate', auth, requireRole('recruiter'), rateCandidate);
 
 // Pipeline status updates
-router.patch('/:id/status', auth, updatePipelineStatus);
-router.post('/:id/verification-test/start', auth, startVerificationTest);
-router.post('/:id/verification-test/submit', auth, submitVerificationTest);
+router.patch('/:id/status', auth, requireRole('recruiter'), updatePipelineStatus);
+router.post('/:id/verification-test/start', auth, requireRole('candidate'), startVerificationTest);
+router.post('/:id/verification-test/submit', auth, requireRole('candidate'), submitVerificationTest);
 
-router.get('/', auth, getAllCandidates);
-router.get('/:id', auth, getCandidateById);
-router.delete('/:id', auth, deleteCandidate);
+router.get('/', auth, requireRole('recruiter'), getAllCandidates);
+router.get('/:id', auth, requireRole('recruiter'), getCandidateById);
+router.delete('/:id', auth, requireRole('recruiter'), deleteCandidate);
 
 module.exports = router;

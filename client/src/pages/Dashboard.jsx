@@ -164,6 +164,15 @@ const Dashboard = () => {
     }
   };
 
+  const handleApplicationStatus = async (applicationId, status) => {
+    try {
+      const updated = await candidateAPI.updateApplicationStatus(applicationId, status);
+      setApplications(current => current.map(application => application._id === applicationId ? { ...application, status: updated.status } : application));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not update this application.');
+    }
+  };
+
   const apiPatchStatus = async (candidateId, newStatus) => {
     const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/candidates/${candidateId}/status`, {
       method: 'PATCH',
@@ -589,7 +598,7 @@ const Dashboard = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {applications.map((application) => (
+            {[...applications].sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1)).map((application) => (
               <div key={application._id || `${application.jobTitle}-${application.candidateEmail}`} className={`flex flex-col gap-4 rounded-2xl border p-4 lg:flex-row lg:items-center lg:justify-between ${darkMode ? 'border-slate-700 bg-slate-800/70' : 'border-slate-200 bg-slate-50'}`}>
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-sm font-bold text-blue-700">
@@ -603,7 +612,9 @@ const Dashboard = () => {
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{application.jobTitle || 'Open role'}</span>
                       <span>{application.salary || 'Competitive'}</span>
+                      {application.matchScore !== null && application.matchScore !== undefined && <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{application.matchScore}% AI role match</span>}
                     </div>
+                    {application.candidateProfile && <div className="mt-2 flex flex-wrap gap-1.5">{application.candidateProfile.skills.slice(0, 5).map(skill => <span key={skill} className="rounded-full bg-white px-2 py-1 text-[10px] text-slate-600 ring-1 ring-slate-200">{skill}</span>)}{application.candidateProfile.resume_filename && <span className="inline-flex items-center gap-1 text-[10px] text-slate-500"><Upload className="h-3 w-3" /> Resume parsed</span>}</div>}
                   </div>
                 </div>
 
@@ -619,6 +630,9 @@ const Dashboard = () => {
                   }`}>
                     {application.status || 'Submitted'}
                   </span>
+                  <select aria-label={`Update ${application.candidateName || 'candidate'} application status`} value={application.status || 'Submitted'} onChange={event => handleApplicationStatus(application._id, event.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
+                    {['Submitted', 'Reviewed', 'Interview', 'Offer', 'Rejected'].map(status => <option key={status} value={status}>{status}</option>)}
+                  </select>
                 </div>
               </div>
             ))}

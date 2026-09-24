@@ -165,6 +165,11 @@ export const userAPI = {
     const response = await api.get('/auth/me');
     return response.data;
   },
+
+  updateApplicationStatus: async (id, status) => {
+    const response = await api.patch(`/candidates/applications/${id}/status`, { status });
+    return response.data;
+  },
   updateProfile: async (profile) => {
     const response = await api.put('/user/profile', profile);
     return response.data;

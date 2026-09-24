@@ -355,27 +355,26 @@ exports.applyToJob = async (req, res) => {
             return res.status(400).json({ error: 'Job title is required.' });
         }
 
-        let recruiterId = null;
-        if (jobId) {
-            const jobConfig = await JobConfig.findById(jobId).select('userId');
-            if (jobConfig) recruiterId = jobConfig.userId;
-        }
+        if (!jobId) return res.status(400).json({ error: 'Choose a published job before applying.' });
+        const jobConfig = await JobConfig.findOne({ _id: jobId, isPublished: true }).select('userId jobTitle salary');
+        if (!jobConfig) return res.status(404).json({ error: 'This job is no longer available.' });
+        const recruiterId = jobConfig.userId;
+        const recruiter = await User.findById(recruiterId).select('companyName username');
 
         const candidate = await Candidate.findOne({ user: req.user.id }).sort({ createdAt: -1 });
         const application = await Application.findOneAndUpdate(
             {
                 userId: req.user.id,
-                jobTitle,
-                company: company || '',
-                jobId: jobId || null
+                jobId
             },
             {
                 userId: req.user.id,
+                candidateId: candidate?._id || null,
                 recruiterId,
                 jobId: jobId || null,
-                jobTitle,
-                company: company || '',
-                salary: salary || 'Competitive',
+                jobTitle: jobConfig.jobTitle,
+                company: recruiter?.companyName || company || recruiter?.username || '',
+                salary: jobConfig.salary || salary || 'Competitive',
                 candidateName: candidate?.name || 'Candidate',
                 candidateEmail: candidate?.email || '',
                 status: 'Submitted'
@@ -414,9 +413,42 @@ exports.getRecruiterApplications = async (req, res) => {
         }
 
         const applications = await Application.find({ recruiterId: req.user.id }).sort({ createdAt: -1 }).lean();
-        res.json(applications);
+        const userIds = [...new Set(applications.map(app => String(app.userId)))];
+        const profiles = await Candidate.find({ user: { $in: userIds } }).lean();
+        const profileByUser = new Map(profiles.map(profile => [String(profile.user), profile]));
+        const jobIds = [...new Set(applications.map(app => app.jobId).filter(Boolean).map(String))];
+        const jobs = await JobConfig.find({ _id: { $in: jobIds } }).lean();
+        const jobById = new Map(jobs.map(job => [String(job._id), job]));
+        const enriched = await Promise.all(applications.map(async app => {
+            const candidate = profileByUser.get(String(app.userId));
+            const job = jobById.get(String(app.jobId));
+            let match = null;
+            if (candidate && job) {
+                try { match = await getPrediction(candidate, job); } catch (error) { console.warn('Application match scoring failed:', error.message); }
+            }
+            return { ...app, candidateProfile: candidate ? { _id: candidate._id, skills: candidate.skills || [], years_experience: candidate.years_experience || 0, education_degree: candidate.education_degree, education_field: candidate.education_field, resume_filename: candidate.resume_filename, summary: candidate.summary } : null, matchScore: match?.success_score ?? null, matchReasons: match?.explainability || [] };
+        }));
+        res.json(enriched);
     } catch (error) {
         console.error('Get recruiter applications error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.updateApplicationStatus = async (req, res) => {
+    try {
+        const { status } = req.body;
+        if (!['Reviewed', 'Interview', 'Offer', 'Rejected'].includes(status)) return res.status(400).json({ error: 'Choose a valid application status.' });
+        const application = await Application.findOne({ _id: req.params.id, recruiterId: req.user.id });
+        if (!application) return res.status(404).json({ error: 'Application not found.' });
+        if (['Interview', 'Offer'].includes(status)) {
+            const candidate = await Candidate.findOne({ user: application.userId });
+            if (!candidate?.verificationTest || candidate.verificationTest.status !== 'Passed') return res.status(409).json({ error: 'The candidate must pass their resume skills assessment before moving to Interview or Offer.' });
+        }
+        application.status = status;
+        await application.save();
+        res.json(application);
+    } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };

@@ -112,8 +112,7 @@ exports.getPublicJobs = async (req, res) => {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        // Keep previous recruiter posts visible when a new scoring profile becomes active.
-        const configs = await JobConfig.find({ $or: [{ isPublished: true }, { isActive: true }] })
+        const configs = await JobConfig.find({ isPublished: true })
             .sort({ createdAt: -1 })
             .populate('userId', 'username companyName')
             .lean();
