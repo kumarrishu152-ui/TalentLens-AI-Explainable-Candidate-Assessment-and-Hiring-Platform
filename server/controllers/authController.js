@@ -14,7 +14,9 @@ const generateToken = (user) => {
 // 1. Register User
 exports.register = async (req, res) => {
     try {
-        const { username, password, role = 'recruiter' } = req.body;
+        const { username, password, role = 'recruiter', displayName = '', companyName = '', email = '' } = req.body;
+        if (!['recruiter', 'candidate'].includes(role)) return res.status(400).json({ message: 'Select a valid account type.' });
+        if (role === 'recruiter' && !companyName.trim()) return res.status(400).json({ message: 'Company name is required for recruiter accounts.' });
 
         // Check if user exists
         let user = await User.findOne({ username });
@@ -30,7 +32,10 @@ exports.register = async (req, res) => {
         user = new User({
             username,
             password: hashedPassword,
-            role
+            role,
+            displayName: displayName.trim(),
+            companyName: companyName.trim(),
+            email: email.trim()
         });
 
         await user.save();
@@ -45,6 +50,9 @@ exports.register = async (req, res) => {
                 id: user.id, 
                 username: user.username,
                 role: user.role,
+                displayName: user.displayName,
+                companyName: user.companyName,
+                email: user.email,
                 hasApiKey: false 
             } 
         });
@@ -90,6 +98,9 @@ exports.login = async (req, res) => {
                 id: user.id, 
                 username: user.username,
                 role: user.role,
+                displayName: user.displayName,
+                companyName: user.companyName,
+                email: user.email,
                 hasApiKey 
             } 
         });
@@ -110,6 +121,16 @@ exports.getMe = async (req, res) => {
             id: user.id, 
             username: user.username,
             role: user.role || 'recruiter',
+            displayName: user.displayName,
+            companyName: user.companyName,
+            email: user.email,
+            phone: user.phone,
+            location: user.location,
+            headline: user.headline,
+            bio: user.bio,
+            skills: user.skills,
+            companyWebsite: user.companyWebsite,
+            industry: user.industry,
             hasApiKey 
         });
     } catch (error) {

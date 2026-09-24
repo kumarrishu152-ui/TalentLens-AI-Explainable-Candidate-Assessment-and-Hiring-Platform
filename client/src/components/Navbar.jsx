@@ -1,13 +1,43 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Brain, PlusCircle, LogOut, Briefcase, UserCircle2, LayoutDashboard, Sparkles, Bell } from 'lucide-react'; 
+import { Brain, PlusCircle, LogOut, Briefcase, UserCircle2, LayoutDashboard, Sparkles, Bell, Pencil } from 'lucide-react';
 import { useAuth } from '../context/AuthContext'; 
 import VoiceInput from './VoiceInput';
+import { userAPI } from '../services/api';
 
 const Navbar = () => {
-  const { user, logout } = useAuth(); 
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profile, setProfile] = useState({});
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+
+  useEffect(() => {
+    if (user) setProfile({
+      displayName: user.displayName || '', email: user.email || '', phone: user.phone || '', location: user.location || '',
+      headline: user.headline || '', bio: user.bio || '', skills: user.skills || '', companyName: user.companyName || '',
+      companyWebsite: user.companyWebsite || '', industry: user.industry || ''
+    });
+  }, [user]);
+
+  const profileFields = user?.role === 'candidate'
+    ? [['displayName', 'Full name'], ['email', 'Email'], ['phone', 'Phone'], ['location', 'Location'], ['headline', 'Professional headline'], ['skills', 'Skills (comma separated)'], ['bio', 'About you']]
+    : [['displayName', 'Your name'], ['email', 'Work email'], ['phone', 'Phone'], ['companyName', 'Company name'], ['companyWebsite', 'Company website'], ['industry', 'Industry'], ['location', 'Company location'], ['bio', 'About the company']];
+
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    setSavingProfile(true);
+    setProfileError('');
+    try {
+      const saved = await userAPI.updateProfile(profile);
+      updateUser(saved);
+      setShowProfile(false);
+    } catch (error) {
+      setProfileError(error.response?.data?.error || 'Could not save your profile.');
+    } finally { setSavingProfile(false); }
+  };
 
   const notifications = user?.role === 'candidate'
     ? [
@@ -153,15 +183,16 @@ const Navbar = () => {
                   className="hidden sm:inline-flex"
                 />
 
-                <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-slate-50 px-2 py-1.5 shadow-sm">
+                <button type="button" onClick={() => setShowProfile(true)} title="Edit profile" aria-label="Edit profile" className="flex items-center gap-3 rounded-full border border-slate-200 bg-slate-50 px-2 py-1.5 text-left shadow-sm hover:border-primary-300">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 to-slate-600 text-xs font-bold text-white">
                     {initials}
                   </div>
                   <div className="hidden sm:block text-left">
-                    <div className="text-sm font-semibold text-slate-800">{user.username || 'Recruiter'}</div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{user.role}</div>
+                    <div className="text-sm font-semibold text-slate-800">{user.displayName || user.username || 'Account'}</div>
+                    <div className="max-w-32 truncate text-[10px] uppercase tracking-[0.15em] text-slate-500">{user.role === 'recruiter' ? (user.companyName || 'Add company') : (user.role || 'candidate')}</div>
                   </div>
-                </div>
+                  <Pencil className="hidden h-3.5 w-3.5 text-slate-400 sm:block" />
+                </button>
 
                 <button 
                   onClick={handleLogout}
@@ -176,6 +207,7 @@ const Navbar = () => {
           </div>
         </div>
       </div>
+      {showProfile && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowProfile(false); }}><form onSubmit={saveProfile} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-primary-700">{user?.role} profile</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Complete your profile</h2></div><button type="button" onClick={() => setShowProfile(false)} className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">Close</button></div><div className="grid gap-4 sm:grid-cols-2">{profileFields.map(([key, label]) => <label key={key} className={`text-sm font-semibold text-slate-700 ${['bio'].includes(key) ? 'sm:col-span-2' : ''}`}>{label}{key === 'bio' ? <textarea rows={3} value={profile[key] || ''} onChange={event => setProfile(prev => ({ ...prev, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal outline-none focus:border-primary-500" /> : <input value={profile[key] || ''} onChange={event => setProfile(prev => ({ ...prev, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal outline-none focus:border-primary-500" />}</label>)}</div>{profileError && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{profileError}</p>}<button disabled={savingProfile} className="mt-5 w-full rounded-xl bg-primary-600 px-4 py-3 font-semibold text-white disabled:opacity-60">{savingProfile ? 'Saving…' : 'Save profile'}</button></form></div>}
     </nav>
   );
 };

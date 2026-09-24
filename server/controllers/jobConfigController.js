@@ -69,6 +69,7 @@ exports.createJobConfig = async (req, res) => {
             skillsWeight,
             educationWeight,
             skillsList:      finalSkillsList,
+            isPublished:     configData.isPublished !== false,
             goldStandardBenchmark: configData.goldStandardBenchmark || {
                 avgYearsExperience:   5,
                 topSkills:            [],
@@ -111,15 +112,16 @@ exports.getPublicJobs = async (req, res) => {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const configs = await JobConfig.find({ isActive: true })
+        // Keep previous recruiter posts visible when a new scoring profile becomes active.
+        const configs = await JobConfig.find({ $or: [{ isPublished: true }, { isActive: true }] })
             .sort({ createdAt: -1 })
-            .populate('userId', 'username')
+            .populate('userId', 'username companyName')
             .lean();
 
         const jobs = configs.map((config) => {
             const skillTags = (config.skillsList || []).slice(0, 6).map(s => s.tag).filter(Boolean);
             const roleName = config.jobTitle || 'Open Role';
-            const companyLabel = config.userId && config.userId.username ? `${config.userId.username} Hiring` : 'Hiring Team';
+            const companyLabel = config.userId?.companyName || (config.userId?.username ? `${config.userId.username} Hiring` : 'Hiring Team');
             const salaryRange = config.salary || config.salaryRange || '₹18L - ₹30L';
             const location = config.location || 'Remote / Flexible';
             const jobType = config.jobType || 'Full-time';

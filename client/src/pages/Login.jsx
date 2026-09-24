@@ -13,6 +13,9 @@ const roles = [
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('recruiter');
   const [error, setError] = useState('');
@@ -35,7 +38,7 @@ const Login = () => {
     try {
       const payload = isLogin
         ? await userAPI.login(trimmedUsername, trimmedPassword, role)
-        : await userAPI.register(trimmedUsername, trimmedPassword, role);
+        : await userAPI.register(trimmedUsername, trimmedPassword, role, { displayName, companyName, email });
 
       login(payload.token, payload.user || { username: trimmedUsername, role });
       navigate(role === 'candidate' ? '/candidate' : '/recruiter');
@@ -78,6 +81,11 @@ const Login = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!isLogin && <>
+            <input type="text" placeholder="Your full name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full rounded-lg border bg-slate-50 p-3 outline-none focus:ring-2 focus:ring-primary-500" required />
+            <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-lg border bg-slate-50 p-3 outline-none focus:ring-2 focus:ring-primary-500" required />
+            {role === 'recruiter' && <input type="text" placeholder="Company name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full rounded-lg border bg-slate-50 p-3 outline-none focus:ring-2 focus:ring-primary-500" required />}
+          </>}
           <div className="relative">
             <User className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
             <input

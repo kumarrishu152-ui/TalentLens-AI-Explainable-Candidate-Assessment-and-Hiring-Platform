@@ -116,6 +116,11 @@ export const candidateAPI = {
     return response.data;
   },
 
+  getMyProfile: async () => {
+    const response = await api.get('/candidates/my-profile');
+    return response.data;
+  },
+
   getRecruiterApplications: async () => {
     const response = await api.get('/candidates/applications');
     return response.data;
@@ -140,8 +145,8 @@ export const userAPI = {
     const response = await api.post('/auth/login', { username, password, role });
     return response.data;
   },
-  register: async (username, password, role = 'recruiter') => {
-    const response = await api.post('/auth/register', { username, password, role });
+  register: async (username, password, role = 'recruiter', profile = {}) => {
+    const response = await api.post('/auth/register', { username, password, role, ...profile });
     return response.data;
   },
   saveApiKey: async (apiKey) => {
@@ -158,6 +163,10 @@ export const userAPI = {
   },
   me: async () => {
     const response = await api.get('/auth/me');
+    return response.data;
+  },
+  updateProfile: async (profile) => {
+    const response = await api.put('/user/profile', profile);
     return response.data;
   }
 };

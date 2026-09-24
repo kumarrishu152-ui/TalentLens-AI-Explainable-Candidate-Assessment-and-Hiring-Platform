@@ -24,10 +24,11 @@ import {
   BadgeCheck,
   Wallet
 } from 'lucide-react';
+import VoiceInput from '../components/VoiceInput';
 
 const CandidateDashboard = () => {
   const { user } = useAuth();
-  const [resumeName, setResumeName] = useState('resume_v2.pdf');
+  const [resumeName, setResumeName] = useState('No resume uploaded');
   const [selectedJobIndex, setSelectedJobIndex] = useState(0);
   const [jobQuery, setJobQuery] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
@@ -37,34 +38,28 @@ const CandidateDashboard = () => {
   const [jobsFound, setJobsFound] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [appliedJobs, setAppliedJobs] = useState([]);
+  const [myApplications, setMyApplications] = useState([]);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [assessment, setAssessment] = useState(null);
+  const [assessmentAnswers, setAssessmentAnswers] = useState({});
+  const [assessmentScore, setAssessmentScore] = useState(null);
+  const [assessmentBusy, setAssessmentBusy] = useState(false);
+  const [resumeProfile, setResumeProfile] = useState(null);
 
+  const applications = myApplications.map(app => ({ title: app.jobTitle, company: app.company || 'Hiring team', stage: app.status, status: app.status, date: app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '', location: 'See job details' }));
   const stats = [
-    { label: 'Applications', value: '04', icon: FileText, accent: 'bg-blue-100 text-blue-700' },
-    { label: 'Interviews', value: '02', icon: CalendarClock, accent: 'bg-violet-100 text-violet-700' },
-    { label: 'Offers', value: '01', icon: CheckCircle2, accent: 'bg-emerald-100 text-emerald-700' },
-    { label: 'Profile Score', value: '89%', icon: Target, accent: 'bg-amber-100 text-amber-700' }
+    { label: 'Applications', value: myApplications.length, icon: FileText, accent: 'bg-blue-100 text-blue-700' },
+    { label: 'Interviews', value: myApplications.filter(app => app.status === 'Interview').length, icon: CalendarClock, accent: 'bg-violet-100 text-violet-700' },
+    { label: 'Offers', value: myApplications.filter(app => app.status === 'Offer').length, icon: CheckCircle2, accent: 'bg-emerald-100 text-emerald-700' },
+    { label: 'Resume', value: resumeProfile ? 'Ready' : 'Add', icon: Target, accent: 'bg-amber-100 text-amber-700' }
   ];
 
-  const applications = [
-    { title: 'Senior Frontend Engineer', company: 'Nexa Labs', stage: 'Technical Interview', status: 'In Progress', date: 'Sep 24, 2026', location: 'Remote • US' },
-    { title: 'Product Designer', company: 'Northstar Studio', stage: 'Portfolio Review', status: 'Awaiting Review', date: 'Sep 28, 2026', location: 'Hybrid • Bengaluru' },
-    { title: 'AI Product Analyst', company: 'AstraIQ', stage: 'HR Screening', status: 'Completed', date: 'Sep 18, 2026', location: 'On-site • Pune' }
-  ];
-
-  const interviewSchedule = [
-    { title: 'System Design Round', interviewer: 'Aarav Mehta', time: 'Tue, 10:30 AM', type: 'Virtual' },
-    { title: 'Portfolio Review', interviewer: 'Priya Nair', time: 'Thu, 2:00 PM', type: 'On-site' },
-    { title: 'Hiring Manager Call', interviewer: 'Daniel Brooks', time: 'Fri, 9:15 AM', type: 'Phone' }
-  ];
-
+  const skills = resumeProfile?.skills || [];
   const profileProgress = [
-    { name: 'Profile Completion', value: 87, color: 'bg-emerald-500' },
-    { name: 'Skills Match', value: 92, color: 'bg-blue-500' },
-    { name: 'Portfolio', value: 74, color: 'bg-violet-500' },
-    { name: 'References', value: 66, color: 'bg-amber-500' }
+    { name: 'Resume profile', value: resumeProfile ? 100 : 0, color: 'bg-emerald-500' },
+    { name: 'Skills detected', value: Math.min(100, skills.length * 12), color: 'bg-blue-500' },
+    { name: 'Applications', value: Math.min(100, myApplications.length * 20), color: 'bg-violet-500' }
   ];
-
-  const skills = ['React', 'Node.js', 'UX Research', 'Product Thinking', 'AI Tools'];
 
   useEffect(() => {
     let isMounted = true;
@@ -84,6 +79,24 @@ const CandidateDashboard = () => {
         if (isMounted) {
           setLoadingJobs(false);
         }
+      }
+      try {
+        const mine = await candidateAPI.getMyApplications();
+        if (isMounted && Array.isArray(mine)) {
+          setMyApplications(mine);
+          setAppliedJobs(mine.map(app => app.jobId || app.jobTitle));
+        }
+      } catch (error) {
+        console.error('Failed to load candidate applications:', error);
+      }
+      try {
+        const profile = await candidateAPI.getMyProfile();
+        if (isMounted && profile) {
+          setResumeProfile(profile);
+          setResumeName(profile.resume_filename || 'Resume uploaded');
+        }
+      } catch (error) {
+        console.error('Failed to load candidate profile:', error);
       }
     };
 
@@ -130,10 +143,17 @@ const CandidateDashboard = () => {
     }
   }, [filteredJobs, selectedJobIndex, selectedJob]);
 
-  const handleResumeUpload = (event) => {
+  const handleResumeUpload = async (event) => {
     const file = event.target.files?.[0];
     if (file) {
-      setResumeName(file.name);
+      setResumeBusy(true);
+      try {
+        const profile = await candidateAPI.uploadResume(file);
+        setResumeProfile(profile);
+        setResumeName(file.name);
+      } catch (error) {
+        alert(error.response?.data?.error || 'Resume upload failed.');
+      } finally { setResumeBusy(false); }
     }
   };
 
@@ -151,6 +171,7 @@ const CandidateDashboard = () => {
 
       setAppliedJobs((prev) => (prev.includes(jobKey) ? prev : [...prev, jobKey]));
       if (result?.application) {
+        setMyApplications(prev => [result.application, ...prev.filter(app => app._id !== result.application._id)]);
         alert(`Application submitted for ${job?.role || 'the selected role'}.`);
       }
     } catch (error) {
@@ -159,13 +180,38 @@ const CandidateDashboard = () => {
     }
   };
 
+  const startAssessment = async () => {
+    if (!resumeProfile?._id || !skills.length) return;
+    setAssessmentBusy(true);
+    try {
+      const result = await candidateAPI.startVerificationTest(resumeProfile._id);
+      setAssessment({ candidateId: resumeProfile._id, questions: result.verificationTest.questions });
+      setAssessmentAnswers({});
+      setAssessmentScore(null);
+    } catch (error) {
+      alert(error.response?.data?.error || 'Could not prepare the resume skills assessment.');
+    } finally { setAssessmentBusy(false); }
+  };
+
+  const submitAssessment = async () => {
+    if (!assessment) return;
+    setAssessmentBusy(true);
+    try {
+      const answers = assessment.questions.map((_, index) => assessmentAnswers[index]);
+      const result = await candidateAPI.submitVerificationTest(assessment.candidateId, answers);
+      setAssessmentScore(result.verificationTest.score);
+    } catch (error) {
+      alert(error.response?.data?.error || 'Could not submit the assessment.');
+    } finally { setAssessmentBusy(false); }
+  };
+
   return (
     <div className="mx-auto max-w-7xl p-6 md:p-8">
       <div className="mb-8 rounded-3xl bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 p-6 text-white shadow-xl shadow-emerald-200">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-100">Candidate Portal</p>
-            <h1 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Welcome back, {user?.username || 'Candidate'}!</h1>
+            <h1 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Welcome back, {user?.displayName || user?.username || 'Candidate'}!</h1>
             <p className="mt-2 text-sm text-emerald-50">Your job search is moving fast. Keep your profile updated for better matches.</p>
           </div>
           <div className="flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm">
@@ -207,6 +253,7 @@ const CandidateDashboard = () => {
               placeholder="Job title, keywords, or company"
               className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
             />
+            <VoiceInput label="Search jobs by voice" onTranscript={(text) => { setJobQuery(text); setActiveSearch(text); setSelectedJobIndex(0); }} />
           </div>
           <div className="flex items-center gap-3">
             <select
@@ -455,6 +502,12 @@ const CandidateDashboard = () => {
         </main>
       </div>
 
+      <section className="mb-8 flex flex-col gap-4 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-white p-5 md:flex-row md:items-center md:justify-between">
+        <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-700">Resume skills assessment</p><h2 className="mt-1 text-xl font-bold text-slate-900">Verify skills from your resume</h2><p className="mt-1 text-sm text-slate-600">Questions are selected from the skills parsed from your uploaded resume.</p></div>
+        <button type="button" onClick={startAssessment} disabled={!resumeProfile || !skills.length || assessmentBusy} className="rounded-xl bg-violet-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{assessmentBusy ? 'Preparing…' : resumeProfile ? 'Start skills assessment' : 'Upload a resume first'}</button>
+      </section>
+      {assessment && <div role="dialog" aria-modal="true" className="mb-8 rounded-2xl border border-violet-200 bg-white p-6 shadow-lg"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-violet-700">Resume skills assessment</p><h3 className="mt-1 text-xl font-bold">{assessment.questions.length} questions from your skills</h3></div><button onClick={() => setAssessment(null)} className="text-sm font-semibold text-slate-500">Close</button></div>{assessment.questions.map((question, index) => <fieldset key={`${question.skill}-${index}`} className="mt-5"><legend className="font-semibold text-slate-800">{index + 1}. <span className="text-violet-700">{question.skill}:</span> {question.question}</legend><div className="mt-2 grid gap-2">{question.options.map((option, optionIndex) => <label key={option} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm"><input type="radio" name={`q${index}`} checked={assessmentAnswers[index] === optionIndex} disabled={assessmentScore !== null} onChange={() => setAssessmentAnswers(prev => ({ ...prev, [index]: optionIndex }))} />{option}</label>)}</div></fieldset>)}<div className="mt-5 flex flex-wrap items-center gap-3"><button disabled={assessmentBusy || assessmentScore !== null || Object.keys(assessmentAnswers).length !== assessment.questions.length} onClick={submitAssessment} className="rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{assessmentBusy ? 'Submitting…' : 'Submit answers'}</button>{assessmentScore !== null && <p className="font-semibold text-slate-700">Assessment score: {assessmentScore}% · {assessmentScore >= 70 ? 'Passed' : 'Keep practicing'}.</p>}</div></div>}
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.9fr]">
         <div className="space-y-6">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -470,9 +523,9 @@ const CandidateDashboard = () => {
 
             <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
               {[
-                { label: 'Submitted', value: '4', color: 'bg-blue-100 text-blue-700' },
-                { label: 'Under Review', value: '2', color: 'bg-violet-100 text-violet-700' },
-                { label: 'Interviewing', value: '1', color: 'bg-emerald-100 text-emerald-700' }
+                { label: 'Submitted', value: myApplications.filter(app => app.status === 'Submitted').length, color: 'bg-blue-100 text-blue-700' },
+                { label: 'Under Review', value: myApplications.filter(app => app.status === 'Reviewed').length, color: 'bg-violet-100 text-violet-700' },
+                { label: 'Interviewing', value: myApplications.filter(app => app.status === 'Interview').length, color: 'bg-emerald-100 text-emerald-700' }
               ].map((item) => (
                 <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${item.color}`}>
@@ -484,7 +537,7 @@ const CandidateDashboard = () => {
             </div>
 
             <div className="space-y-4">
-              {applications.map((job) => (
+              {applications.length ? applications.map((job) => (
                 <div key={job.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
@@ -500,7 +553,7 @@ const CandidateDashboard = () => {
                     <span className="text-sm text-slate-500">{job.date}</span>
                   </div>
                 </div>
-              ))}
+              )) : <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Your submitted applications and recruiter updates will appear here.</p>}
             </div>
           </div>
         </div>
@@ -520,8 +573,8 @@ const CandidateDashboard = () => {
                   <Upload className="h-5 w-5" />
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-700">Upload your latest resume</p>
-                <p className="mt-1 text-xs text-slate-500">PDF, DOCX up to 5MB</p>
-                <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleResumeUpload} />
+                <p className="mt-1 text-xs text-slate-500">PDF or DOCX up to 10MB · {resumeBusy ? 'Uploading…' : 'Parsed securely for matching'}</p>
+                <input type="file" accept=".pdf,.docx" className="hidden" onChange={handleResumeUpload} />
               </label>
             </div>
 
@@ -579,11 +632,11 @@ const CandidateDashboard = () => {
             <ul className="space-y-3 text-sm text-slate-600">
               <li className="flex justify-between border-b border-slate-100 pb-2">
                 <span>Years of experience</span>
-                <strong className="text-slate-900">5+</strong>
+                <strong className="text-slate-900">{resumeProfile?.years_experience ?? '—'}</strong>
               </li>
               <li className="flex justify-between border-b border-slate-100 pb-2">
                 <span>Primary domain</span>
-                <strong className="text-slate-900">Product / AI</strong>
+                <strong className="text-slate-900">{resumeProfile?.education_field || 'Add a resume'}</strong>
               </li>
               <li className="flex justify-between">
                 <span>Last updated</span>
@@ -600,16 +653,7 @@ const CandidateDashboard = () => {
               <h2 className="text-xl font-bold text-slate-900">Interview Schedule</h2>
             </div>
             <div className="space-y-4">
-              {interviewSchedule.map((interview) => (
-                <div key={interview.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="text-base font-bold text-slate-900">{interview.title}</h3>
-                  <p className="mt-2 text-sm text-slate-500">{interview.interviewer}</p>
-                  <div className="mt-3 flex items-center justify-between text-sm">
-                    <span className="font-medium text-slate-700">{interview.time}</span>
-                    <span className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700">{interview.type}</span>
-                  </div>
-                </div>
-              ))}
+              {myApplications.some(app => app.status === 'Interview') ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">An interview is in progress. Check the application status for recruiter updates and scheduling details.</p> : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No interviews scheduled yet. Interview invitations from recruiters will appear here.</p>}
             </div>
           </div>
         </div>

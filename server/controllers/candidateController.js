@@ -49,13 +49,18 @@ exports.uploadResume = async (req, res) => {
             if (!isPdf) {
                 return res.status(400).json({ error: 'This DOCX file contains too little readable text. Upload a text-based PDF or DOCX resume.' });
             }
+            if (!geminiApiKey) return res.status(400).json({ error: 'This PDF appears to be scanned and has no extractable text. Please upload a text-based PDF or DOCX resume.' });
             parsedData = await parseResumeWithGemini(req.file.buffer, true, geminiApiKey);
             resumeText = `[Scanned PDF]\nName: ${parsedData.name}\nEmail: ${parsedData.email}\nSummary: ${parsedData.summary}`;
         } else {
-            try {
-                parsedData = await parseResumeWithGemini(resumeText, false, geminiApiKey);
-            } catch (aiError) {
-                console.warn('Gemini parsing unavailable; using local resume parser:', aiError.message);
+            if (geminiApiKey) {
+                try {
+                    parsedData = await parseResumeWithGemini(resumeText, false, geminiApiKey);
+                } catch (aiError) {
+                    console.warn('Gemini parsing unavailable; using local resume parser:', aiError.message);
+                }
+            }
+            if (!parsedData) {
                 parsedData = parseResumeLocally(resumeText);
             }
         }
@@ -75,7 +80,7 @@ exports.uploadResume = async (req, res) => {
             quote: se.quote
         }));
 
-        const newCandidate = new Candidate({
+        const candidateData = {
             name:             parsedData.name || 'Unknown Candidate',
             email:            parsedData.email || 'unknown@example.com',
             skills:           tags,
@@ -85,7 +90,9 @@ exports.uploadResume = async (req, res) => {
             education_field:  parsedData.education_field  || '',
             summary:          parsedData.summary || '',
             resume_text:      resumeText,
+            resume_filename:  req.file.originalname,
             user:             req.user.id,
+            verificationTest: { status: 'Not started', questions: [], score: null },
             prediction: {
                 success_score:    0,
                 analysis:         'Not yet analyzed.',
@@ -95,14 +102,33 @@ exports.uploadResume = async (req, res) => {
                 duplicateFound:   duplicateFound,
                 authenticityFlag: parsedData.is_keyword_stuffed || false
             }
-        });
-
-        await newCandidate.save();
+        };
+        const account = await User.findById(req.user.id).select('role');
+        let newCandidate;
+        if (account?.role === 'candidate') {
+            newCandidate = await Candidate.findOneAndUpdate(
+                { user: req.user.id },
+                { $set: candidateData },
+                { new: true, upsert: true, setDefaultsOnInsert: true }
+            );
+        } else {
+            newCandidate = new Candidate(candidateData);
+            await newCandidate.save();
+        }
         res.status(201).json(newCandidate);
 
     } catch (error) {
         console.error('Upload error:', error);
         res.status(500).json({ error: error.message || 'Internal Server Error' });
+    }
+};
+
+exports.getMyProfile = async (req, res) => {
+    try {
+        const candidate = await Candidate.findOne({ user: req.user.id }).sort({ updatedAt: -1, createdAt: -1 });
+        res.json(candidate || null);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 };
 

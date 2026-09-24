@@ -82,6 +82,7 @@ const JobConfigSchema = new mongoose.Schema({
     }]
   }],
   isActive: { type: Boolean, default: true },
+  isPublished: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
 

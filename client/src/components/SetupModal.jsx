@@ -4,12 +4,12 @@ import { userAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const SetupModal = () => {
-  const { showKeyModal, updateApiKeyStatus } = useAuth();
+  const { user, showKeyModal, updateApiKeyStatus } = useAuth();
   const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  if (!showKeyModal) return null;
+  if (!showKeyModal || user?.role === 'candidate') return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -19,6 +19,7 @@ const CandidateSchema = new mongoose.Schema({
     
     summary: { type: String },
     resume_text: { type: String }, // Raw text from PDF
+    resume_filename: { type: String, default: '' },
     
     // ATS Pipeline State
     pipelineStatus: {

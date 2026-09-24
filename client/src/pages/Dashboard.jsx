@@ -15,8 +15,10 @@ import AboutSection from '../components/AboutSection';
 import GlowCard from '../components/ui/GlowCard';
 import { candidateAPI, userAPI } from '../services/api';
 import VoiceInput from '../components/VoiceInput';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [candidates, setCandidates] = useState([]);
   const [jobConfig, setJobConfig] = useState(null);
   const [applications, setApplications] = useState([]);
@@ -411,6 +413,9 @@ const Dashboard = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <button onClick={() => navigate('/create-job')} className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-200 hover:bg-primary-700">
+            <Plus className="h-4 w-4" /> Create a job
+          </button>
           <button
             onClick={() => setDarkMode(!darkMode)}
             className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm transition-all ${darkMode ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
@@ -476,6 +481,7 @@ const Dashboard = () => {
       </div>
 
       {/* --- ACTIVE Hiring Job profile card --- */}
+      {!jobConfig && <button onClick={() => navigate('/create-job')} className="mb-6 flex w-full items-center gap-4 rounded-2xl border border-dashed border-primary-300 bg-primary-50 p-5 text-left hover:bg-primary-100"><span className="rounded-xl bg-white p-3 text-primary-700 shadow-sm"><Briefcase className="h-6 w-6" /></span><span className="flex-1"><strong className="block text-slate-900">Create your first job post</strong><span className="mt-1 block text-sm text-slate-600">Add role details and must-have skills. Published jobs appear in candidate search.</span></span><Plus className="h-5 w-5 text-primary-700" /></button>}
       {jobConfig && (
         <GlowCard className="mb-8 p-6 bg-gradient-to-r from-white to-blue-50/50">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

@@ -80,6 +80,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUser = (userData) => {
+    const updatedUser = { ...user, ...userData };
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -88,7 +94,8 @@ export const AuthProvider = ({ children }) => {
       loading, 
       showKeyModal, 
       setShowKeyModal,
-      updateApiKeyStatus 
+      updateApiKeyStatus,
+      updateUser
     }}>
       {children}
     </AuthContext.Provider>

@@ -14,7 +14,8 @@ const {
     submitVerificationTest,
     applyToJob,
     getMyApplications,
-    getRecruiterApplications
+    getRecruiterApplications,
+    getMyProfile
 } = require('../controllers/candidateController');
 
 // Configure Multer to store file in memory for immediate parsing
@@ -37,6 +38,7 @@ const upload = multer({
 router.post('/upload', auth, upload.single('resume'), uploadResume);
 router.post('/apply', auth, applyToJob);
 router.get('/my-applications', auth, getMyApplications);
+router.get('/my-profile', auth, getMyProfile);
 router.get('/applications', auth, getRecruiterApplications);
 router.post('/:id/predict', auth, predictCandidate);
 

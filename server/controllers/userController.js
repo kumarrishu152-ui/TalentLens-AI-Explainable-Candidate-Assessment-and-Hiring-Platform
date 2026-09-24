@@ -50,3 +50,24 @@ exports.getTopCandidates = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+exports.updateProfile = async (req, res) => {
+    try {
+        const allowedFields = ['displayName', 'email', 'phone', 'location', 'headline', 'bio', 'skills', 'companyName', 'companyWebsite', 'industry'];
+        const updates = {};
+        allowedFields.forEach(field => {
+            if (typeof req.body[field] === 'string') updates[field] = req.body[field].trim();
+        });
+        const user = await User.findByIdAndUpdate(req.user.id, { $set: updates }, { new: true, runValidators: true }).select('-password -geminiApiKey');
+        if (!user) return res.status(404).json({ error: 'Account not found.' });
+        if (user.role === 'candidate' && (updates.displayName || updates.email)) {
+            const candidateUpdates = {};
+            if (updates.displayName) candidateUpdates.name = updates.displayName;
+            if (updates.email) candidateUpdates.email = updates.email;
+            await Candidate.findOneAndUpdate({ user: user._id }, { $set: candidateUpdates });
+        }
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Could not save profile.' });
+    }
+};
