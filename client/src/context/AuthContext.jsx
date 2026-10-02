@@ -14,7 +14,13 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const initAuth = async () => {
-      const storedToken = localStorage.getItem('token');
+      const rawToken = localStorage.getItem('token');
+      // Guard against garbage values ('null', 'undefined', whitespace) left by older sessions.
+      const storedToken = rawToken && !['null', 'undefined'].includes(rawToken.trim()) ? rawToken.trim() : null;
+      if (storedToken !== rawToken) {
+        if (storedToken) localStorage.setItem('token', storedToken);
+        else localStorage.removeItem('token');
+      }
 
       if (!storedToken) {
         setUser(null);

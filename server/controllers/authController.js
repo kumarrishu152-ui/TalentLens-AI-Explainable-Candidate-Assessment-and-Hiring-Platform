@@ -15,6 +15,7 @@ const generateToken = (user) => {
 exports.register = async (req, res) => {
     try {
         const { username, password, role = 'recruiter', displayName = '', companyName = '', email = '' } = req.body;
+        // Admin accounts are provisioned by an operator, never through public signup.
         if (!['recruiter', 'candidate'].includes(role)) return res.status(400).json({ message: 'Select a valid account type.' });
         if (role === 'recruiter' && !companyName.trim()) return res.status(400).json({ message: 'Company name is required for recruiter accounts.' });
 
@@ -113,6 +114,7 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
+        if (!user) return res.status(404).json({ message: 'Account not found.' });
         const hasApiKey = !!(user.geminiApiKey && user.geminiApiKey.content);
         
         res.json({ 
@@ -132,6 +134,7 @@ exports.getMe = async (req, res) => {
             hasApiKey 
         });
     } catch (error) {
+        console.error('Get current user error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 };

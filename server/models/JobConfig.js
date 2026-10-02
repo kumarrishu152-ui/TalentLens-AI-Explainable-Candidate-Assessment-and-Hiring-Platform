@@ -10,6 +10,14 @@ const JobConfigSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  description: { type: String, default: '' },
+  assessmentRequirements: [{ type: String }],
+  // Coarse job field used by recruiters to shortlist applications (Engineering, Sales, etc.)
+  jobField: {
+    type: String,
+    enum: ['Engineering', 'Sales', 'Marketing', 'Design', 'Finance', 'Operations', 'Data & Analytics', 'HR', 'Other'],
+    default: 'Other'
+  },
   // Hard Filters
   minExperience: {
     type: Number,

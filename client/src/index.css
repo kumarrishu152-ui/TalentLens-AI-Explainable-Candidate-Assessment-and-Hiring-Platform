@@ -21,3 +21,143 @@
     @apply bg-white rounded-xl shadow-sm border border-slate-200 p-6 transition-all duration-200 hover:shadow-md;
   }
 }
+
+/* ---------- Premium motion & atmosphere utilities ---------- */
+
+@keyframes aurora-drift {
+  0%   { transform: translate3d(-6%, -4%, 0) scale(1); }
+  50%  { transform: translate3d(5%, 6%, 0) scale(1.12); }
+  100% { transform: translate3d(-6%, -4%, 0) scale(1); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-130%) skewX(-12deg); }
+  100% { transform: translateX(230%) skewX(-12deg); }
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(0.9); opacity: 0.7; }
+  70%  { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+.animate-aurora    { animation: aurora-drift 16s ease-in-out infinite; }
+.animate-fade-up   { animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-shimmer   { animation: shimmer-sweep 2.8s ease-in-out infinite; }
+.animate-pulse-ring{ animation: pulse-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.animate-float-slow{ animation: float-slow 6s ease-in-out infinite; }
+
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-500 { animation-delay: 0.5s; }
+
+.text-gradient {
+  background: linear-gradient(92deg, #1d4ed8 0%, #6366f1 55%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-grid-faint {
+  background-image:
+    linear-gradient(to right, rgba(100, 116, 139, 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(100, 116, 139, 0.09) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.mask-fade-b {
+  -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+}
+
+/* Scrollbar */
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.35); border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
+
+/* Shared night theme for both dashboards and the surrounding navigation. */
+html[data-theme='dark'] body {
+  background-color: #080d18;
+  color: #e2e8f0;
+}
+
+html[data-theme='dark'] .bg-white,
+html[data-theme='dark'] .bg-white\/90 {
+  background-color: #111827;
+}
+
+html[data-theme='dark'] .bg-slate-50 {
+  background-color: #0f172a;
+}
+
+html[data-theme='dark'] .bg-slate-100 {
+  background-color: #1e293b;
+}
+
+html[data-theme='dark'] .bg-slate-200 {
+  background-color: #334155;
+}
+
+html[data-theme='dark'] .text-slate-900,
+html[data-theme='dark'] .text-slate-800 {
+  color: #f1f5f9;
+}
+
+html[data-theme='dark'] .text-slate-700,
+html[data-theme='dark'] .text-slate-600 {
+  color: #cbd5e1;
+}
+
+html[data-theme='dark'] .text-slate-500,
+html[data-theme='dark'] .text-slate-400 {
+  color: #94a3b8;
+}
+
+html[data-theme='dark'] .border-slate-100,
+html[data-theme='dark'] .border-slate-200,
+html[data-theme='dark'] .border-slate-300 {
+  border-color: #293548;
+}
+
+html[data-theme='dark'] input:not([type='radio']):not([type='checkbox']),
+html[data-theme='dark'] textarea,
+html[data-theme='dark'] select {
+  background-color: #111827;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+html[data-theme='dark'] input::placeholder,
+html[data-theme='dark'] textarea::placeholder {
+  color: #64748b;
+}
+
+html[data-theme='dark'] .bg-gradient-to-br.from-white,
+html[data-theme='dark'] .bg-gradient-to-r.from-white {
+  background-image: linear-gradient(135deg, #111827, #172033);
+}
+
+html[data-theme='dark'] .shadow-slate-200\/60,
+html[data-theme='dark'] .shadow-blue-100\/60,
+html[data-theme='dark'] .shadow-violet-100\/60,
+html[data-theme='dark'] .shadow-emerald-100\/60,
+html[data-theme='dark'] .shadow-sky-100\/60 {
+  --tw-shadow-color: rgb(2 6 23 / 0.45);
+}
+
+html[data-theme='dark'] .dark-theme-control {
+  background-color: #111827;
+  border-color: #334155;
+}

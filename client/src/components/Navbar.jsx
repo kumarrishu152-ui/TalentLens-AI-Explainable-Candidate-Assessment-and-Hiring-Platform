@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Brain, PlusCircle, LogOut, Briefcase, UserCircle2, LayoutDashboard, Sparkles, Bell, Pencil } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import { useAuth } from '../context/AuthContext'; 
 import VoiceInput from './VoiceInput';
 import { userAPI } from '../services/api';
@@ -80,11 +80,20 @@ const Navbar = () => {
     }
   };
 
-  const roleLabel = user?.role === 'candidate' ? 'Candidate Portal' : 'Recruiter Portal';
+  const roleLabel = user?.role === 'candidate' ? 'Candidate Portal' : user?.role === 'admin' ? 'Admin Portal' : 'Recruiter Portal';
   const initials = user?.username ? user.username.slice(0, 2).toUpperCase() : 'TL';
 
+  // Close the profile modal with Escape for keyboard users.
+  useEffect(() => {
+    if (!showProfile) return undefined;
+    const onKeyDown = (event) => { if (event.key === 'Escape') setShowProfile(false); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showProfile]);
+
   return (
-    <nav className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl">
+    <>
+    <nav className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 shadow-sm backdrop-blur-xl">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-18 items-center justify-between gap-4 py-3">
           <Link to={user?.role === 'candidate' ? '/candidate' : user ? '/recruiter' : '/login'} className="flex items-center gap-3">
@@ -103,21 +112,16 @@ const Navbar = () => {
 
           <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1 md:flex">
             <Link to={user ? (user.role === 'candidate' ? '/candidate' : '/recruiter') : '/login'} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white hover:text-primary-700">
-              <LayoutDashboard className="h-4 w-4" />
               Dashboard
             </Link>
             {user?.role === 'recruiter' && (
-              <Link to="/create-job" className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white hover:text-primary-700">
-                <Briefcase className="h-4 w-4" />
-                Jobs
-              </Link>
+              <><Link to="/create-job" className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white hover:text-primary-700">Jobs</Link><Link to="/analytics" className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white hover:text-primary-700">Analytics</Link></>
             )}
             <button
               type="button"
               onClick={handleAiMatch}
               className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white hover:text-primary-700"
             >
-              <Sparkles className="h-4 w-4" />
               AI Match
             </button>
           </div>
@@ -130,7 +134,6 @@ const Navbar = () => {
                     to="/create-job" 
                     className="hidden items-center gap-2 rounded-xl bg-primary-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary-200 transition-colors hover:bg-primary-700 sm:inline-flex"
                   >
-                    <PlusCircle className="h-4 w-4" />
                     New Job
                   </Link>
                 ) : (
@@ -138,7 +141,6 @@ const Navbar = () => {
                     to="/candidate" 
                     className="hidden items-center gap-2 rounded-xl bg-primary-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary-200 transition-colors hover:bg-primary-700 sm:inline-flex"
                   >
-                    <UserCircle2 className="h-4 w-4" />
                     My Dashboard
                   </Link>
                 )}
@@ -148,11 +150,11 @@ const Navbar = () => {
                     type="button"
                     onClick={() => setShowNotifications((prev) => !prev)}
                     aria-label="Toggle notifications"
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition-colors hover:bg-slate-100"
+                    className="relative flex h-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-100"
                   >
-                    <Bell className="h-4 w-4" />
+                    Alerts
                     {notifications.length > 0 && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />
+                      <span className="ml-2 inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
                     )}
                   </button>
 
@@ -191,7 +193,6 @@ const Navbar = () => {
                     <div className="text-sm font-semibold text-slate-800">{user.displayName || user.username || 'Account'}</div>
                     <div className="max-w-32 truncate text-[10px] uppercase tracking-[0.15em] text-slate-500">{user.role === 'recruiter' ? (user.companyName || 'Add company') : (user.role || 'candidate')}</div>
                   </div>
-                  <Pencil className="hidden h-3.5 w-3.5 text-slate-400 sm:block" />
                 </button>
 
                 <button 
@@ -199,7 +200,6 @@ const Navbar = () => {
                   className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                   title="Sign Out"
                 >
-                  <LogOut className="h-4 w-4" />
                   <span className="hidden md:inline">Sign out</span>
                 </button>
               </>
@@ -207,8 +207,13 @@ const Navbar = () => {
           </div>
         </div>
       </div>
-      {showProfile && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowProfile(false); }}><form onSubmit={saveProfile} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-primary-700">{user?.role} profile</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Complete your profile</h2></div><button type="button" onClick={() => setShowProfile(false)} className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">Close</button></div><div className="grid gap-4 sm:grid-cols-2">{profileFields.map(([key, label]) => <label key={key} className={`text-sm font-semibold text-slate-700 ${['bio'].includes(key) ? 'sm:col-span-2' : ''}`}>{label}{key === 'bio' ? <textarea rows={3} value={profile[key] || ''} onChange={event => setProfile(prev => ({ ...prev, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal outline-none focus:border-primary-500" /> : <input value={profile[key] || ''} onChange={event => setProfile(prev => ({ ...prev, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal outline-none focus:border-primary-500" />}</label>)}</div>{profileError && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{profileError}</p>}<button disabled={savingProfile} className="mt-5 w-full rounded-xl bg-primary-600 px-4 py-3 font-semibold text-white disabled:opacity-60">{savingProfile ? 'Saving…' : 'Save profile'}</button></form></div>}
     </nav>
+
+    {/* Rendered OUTSIDE <nav>: backdrop-filter on the nav makes it the
+        containing block for fixed children, which squashes the modal into
+        the 72px navbar strip. As a sibling, inset-0 spans the viewport. */}
+    {showProfile && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowProfile(false); }}><form onSubmit={saveProfile} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-primary-700">{user?.role} profile</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Complete your profile</h2></div><button type="button" onClick={() => setShowProfile(false)} className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">Close</button></div><div className="grid gap-4 sm:grid-cols-2">{profileFields.map(([key, label]) => <label key={key} className={`text-sm font-semibold text-slate-700 ${['bio'].includes(key) ? 'sm:col-span-2' : ''}`}>{label}{key === 'bio' ? <textarea rows={3} value={profile[key] || ''} onChange={event => setProfile(prev => ({ ...prev, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal outline-none focus:border-primary-500" /> : <input type={key === 'email' ? 'email' : 'text'} value={profile[key] || ''} onChange={event => setProfile(prev => ({ ...prev, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal outline-none focus:border-primary-500" />}</label>)}</div>{profileError && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{profileError}</p>}<button disabled={savingProfile} className="mt-5 w-full rounded-xl bg-primary-600 px-4 py-3 font-semibold text-white disabled:opacity-60">{savingProfile ? 'Saving…' : 'Save profile'}</button></form></div>}
+    </>
   );
 };
 

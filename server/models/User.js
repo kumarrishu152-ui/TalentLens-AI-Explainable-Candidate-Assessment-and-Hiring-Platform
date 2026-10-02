@@ -15,7 +15,7 @@ const UserSchema = new mongoose.Schema({
     industry: { type: String, default: '' },
     role: {
         type: String,
-        enum: ['recruiter', 'candidate'],
+        enum: ['recruiter', 'candidate', 'admin'],
         default: 'recruiter'
     },
 

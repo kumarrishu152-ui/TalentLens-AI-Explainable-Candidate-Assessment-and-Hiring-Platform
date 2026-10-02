@@ -24,7 +24,35 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Response interceptor: a 401 means the saved token is missing, stale (e.g. the server
+// secret changed), or expired. Clear the session and return to the login page instead of
+// letting every request surface a raw "Token is not valid" error.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error.config?.url || '';
+    const isAuthCall = url.includes('/auth/login') || url.includes('/auth/register');
+    if (error.response?.status === 401 && !isAuthCall && window.location.pathname !== '/login') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.replace('/login');
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const candidateAPI = {
+  generateAssessmentQuestions: async (data) => (await api.post('/assessments/generate-questions', data)).data,
+  createAssessment: async (data) => (await api.post('/assessments', data)).data,
+  getMyAssessments: async () => (await api.get('/assessments/mine')).data,
+  submitAssessment: async (id, answers, proctoring) => (await api.post(`/assessments/${id}/submit`, { answers, proctoring })).data,
+  reportAssessmentViolation: async (id, payload) => (await api.post(`/assessments/${id}/violation`, payload)).data,
+  resetAssessment: async (id) => (await api.post(`/assessments/${id}/reset`)).data,
+  getInterviews: async () => (await api.get('/platform/interviews')).data,
+  getAnalytics: async () => (await api.get('/platform/analytics')).data,
+  getRankings: async (jobId) => (await api.get(`/platform/jobs/${jobId}/rankings`)).data,
+  scheduleInterview: async (applicationId, data) => (await api.post(`/platform/applications/${applicationId}/interviews`, data)).data,
+  updateJob: async (jobId, data) => (await api.patch(`/platform/jobs/${jobId}`, data)).data,
   // Upload and parse resume
   uploadResume: async (file) => {
     const formData = new FormData();
@@ -67,8 +95,16 @@ export const candidateAPI = {
     return response.data;
   },
 
-  submitVerificationTest: async (id, answers) => {
-    const response = await api.post(`/candidates/${id}/verification-test/submit`, { answers });
+  submitVerificationTest: async (id, answers, proctoring) => {
+    const response = await api.post(`/candidates/${id}/verification-test/submit`, { answers, proctoring });
+    return response.data;
+  },
+  reportVerificationViolation: async (id, payload) => {
+    const response = await api.post(`/candidates/${id}/verification-test/violation`, payload);
+    return response.data;
+  },
+  resetVerificationTest: async (candidateDocId) => {
+    const response = await api.post(`/candidates/${candidateDocId}/verification-test/reset`);
     return response.data;
   },
 
@@ -126,6 +162,11 @@ export const candidateAPI = {
     return response.data;
   },
 
+  updateApplicationStatus: async (id, status) => {
+    const response = await api.patch(`/candidates/applications/${id}/status`, { status });
+    return response.data;
+  },
+
   // Update Config (Feature 3: Tweak Weights)
   updateJobConfig: async (data) => {
     const response = await api.put('/job-config/active', data);
@@ -166,12 +207,15 @@ export const userAPI = {
     return response.data;
   },
 
-  updateApplicationStatus: async (id, status) => {
-    const response = await api.patch(`/candidates/applications/${id}/status`, { status });
-    return response.data;
-  },
   updateProfile: async (profile) => {
     const response = await api.put('/user/profile', profile);
+    return response.data;
+  }
+};
+
+export const agentAPI = {
+  chat: async (payload) => {
+    const response = await api.post('/agents/chat', payload);
     return response.data;
   }
 };

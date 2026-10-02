@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Key, Lock, Loader2, CheckCircle } from 'lucide-react';
+import { Key, Lock, Loader2 } from 'lucide-react';
 import { userAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,7 +9,7 @@ const SetupModal = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  if (!showKeyModal || user?.role === 'candidate') return null;
+  if (!showKeyModal) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,7 +20,7 @@ const SetupModal = () => {
       await userAPI.saveApiKey(apiKey);
       updateApiKeyStatus();
     } catch (err) {
-      setError('Failed to save API Key. Please try again.');
+      setError(err.response?.data?.error || 'Could not save the Gemini API key. Check the server configuration and try again.');
     } finally {
       setLoading(false);
     }
@@ -35,7 +35,7 @@ const SetupModal = () => {
           </div>
           <h2 className="text-2xl font-bold text-slate-900">Setup Your API Key</h2>
           <p className="text-slate-600 mt-2">
-            TalentLens AI uses Google Gemini. Please enter your API Key to continue.
+            TalentLens AI uses Google Gemini for its AI assistant and resume intelligence. Add your own key to enable these features.
           </p>
         </div>
 
@@ -62,7 +62,7 @@ const SetupModal = () => {
             <p className="flex items-center gap-2 mb-1">
               <Lock className="w-3 h-3" /> Security Guarantee:
             </p>
-            <p>Your key is encrypted (AES-256) before storage and decrypted only when communicating with the AI service.</p>
+            <p>Your key is encrypted before storage and used only for your AI requests. Create or manage a key at <a className="font-semibold text-blue-700 underline" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">Google AI Studio</a>.</p>
           </div>
 
           <button

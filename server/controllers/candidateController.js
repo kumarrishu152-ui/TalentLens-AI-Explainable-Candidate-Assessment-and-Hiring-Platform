@@ -2,12 +2,15 @@ const Candidate = require('../models/Candidate');
 const JobConfig  = require('../models/JobConfig');
 const User       = require('../models/User');
 const Application = require('../models/Application');
+const Assessment = require('../models/Assessment');
+const AssessmentResult = require('../models/AssessmentResult');
 const { extractResumeText }    = require('../utils/resumeParser');
 const { getGeminiApiKey } = require('../utils/geminiKey');
 const { parseResumeLocally } = require('../utils/localResumeParser');
 const { parseResumeWithGemini, getSkillsWithEmbeddings } = require('../services/geminiService');
 const { getPrediction, tuneWeights } = require('../services/mlService');
 const { buildVerificationQuestions } = require('../utils/verificationTest');
+const { sanitizeProctoringReport } = require('../utils/proctoring');
 
 const escapeRegExp = (string) => {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -293,6 +296,7 @@ const publicVerificationTest = (verificationTest) => ({
     status: verificationTest.status,
     score: verificationTest.score,
     completedAt: verificationTest.completedAt,
+    proctoring: verificationTest.proctoring,
     questions: (verificationTest.questions || []).map(({ skill, question, options, selectedAnswer }) => ({
         skill, question, options, selectedAnswer
     }))
@@ -337,10 +341,72 @@ exports.submitVerificationTest = async (req, res) => {
         candidate.verificationTest.status = score >= 70 ? 'Passed' : 'Failed';
         candidate.verificationTest.score = score;
         candidate.verificationTest.completedAt = new Date();
+        const proctoring = sanitizeProctoringReport(req.body.proctoring);
+        if (proctoring) candidate.verificationTest.proctoring = proctoring;
         await candidate.save();
         res.json({ verificationTest: publicVerificationTest(candidate.verificationTest) });
     } catch (error) {
         console.error('Verification test submit error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * Candidate proctoring dismantled the verification attempt (anti-cheat) and the
+ * test was restarted, or the test was terminated after repeated violations.
+ * Records the report server-side without scoring anything.
+ */
+exports.reportVerificationViolation = async (req, res) => {
+    try {
+        const candidate = await Candidate.findOne({ _id: req.params.id, user: req.user.id });
+        if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+        const { terminated = false, terminateReason = '', restarts = 0 } = req.body || {};
+        const proctoring = { ...sanitizeProctoringReport(req.body.proctoring), terminated: terminated === true, terminateReason: String(terminateReason || '').slice(0, 200), restarts: Math.max(0, Math.min(20, Math.round(Number(restarts) || 0))) };
+        if (terminated) {
+            candidate.verificationTest.status = 'Failed';
+            candidate.verificationTest.score = 0;
+            candidate.verificationTest.completedAt = new Date();
+            candidate.verificationTest.questions = [];
+        }
+        candidate.verificationTest.proctoring = proctoring;
+        await candidate.save();
+        res.json({ recorded: true });
+    } catch (error) {
+        console.error('Verification violation report error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * Recruiter re-arranges (resets) the candidate's verification test after a
+ * proctoring termination so they can take it again.
+ */
+exports.resetVerificationTest = async (req, res) => {
+    try {
+        const candidate = await Candidate.findOne({ _id: req.params.id, user: req.user.id });
+        if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+        const wasTerminated = candidate.verificationTest?.proctoring?.terminated === true;
+        candidate.verificationTest = {
+            status: 'Not started',
+            questions: [],
+            score: null,
+            completedAt: null,
+            proctoring: {
+                enabled: false,
+                permissioned: false,
+                cameraStreamHealthy: true,
+                micStreamHealthy: true,
+                suspiciousEventCount: 0,
+                terminated: false,
+                terminateReason: '',
+                restarts: 0,
+                events: []
+            }
+        };
+        await candidate.save();
+        res.json({ recorded: true, wasTerminated, candidateId: candidate._id, status: candidate.verificationTest.status });
+    } catch (error) {
+        console.error('Verification test reset error:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -419,6 +485,14 @@ exports.getRecruiterApplications = async (req, res) => {
         const jobIds = [...new Set(applications.map(app => app.jobId).filter(Boolean).map(String))];
         const jobs = await JobConfig.find({ _id: { $in: jobIds } }).lean();
         const jobById = new Map(jobs.map(job => [String(job._id), job]));
+        const appIds = applications.map(app => app._id);
+        const [assessments, results] = await Promise.all([
+            Assessment.find({ applicationId: { $in: appIds } }).select('applicationId title').lean(),
+            AssessmentResult.find({ applicationId: { $in: appIds } }).select('assessmentId applicationId score passed proctoring submittedAt').sort({ submittedAt: -1 }).lean()
+        ]);
+        const assessmentByApp = new Map(assessments.map(a => [String(a.applicationId), a]));
+        const latestResultByApp = new Map();
+        results.forEach(result => { if (!latestResultByApp.has(String(result.applicationId))) latestResultByApp.set(String(result.applicationId), result); });
         const enriched = await Promise.all(applications.map(async app => {
             const candidate = profileByUser.get(String(app.userId));
             const job = jobById.get(String(app.jobId));
@@ -426,7 +500,30 @@ exports.getRecruiterApplications = async (req, res) => {
             if (candidate && job) {
                 try { match = await getPrediction(candidate, job); } catch (error) { console.warn('Application match scoring failed:', error.message); }
             }
-            return { ...app, candidateProfile: candidate ? { _id: candidate._id, skills: candidate.skills || [], years_experience: candidate.years_experience || 0, education_degree: candidate.education_degree, education_field: candidate.education_field, resume_filename: candidate.resume_filename, summary: candidate.summary } : null, matchScore: match?.success_score ?? null, matchReasons: match?.explainability || [] };
+            const latestResult = latestResultByApp.get(String(app._id)) || null;
+            const candidateVerification = candidate?.verificationTest || null;
+            return {
+                ...app,
+                jobField: job ? (job.jobField || 'Other') : null,
+                assessment: assessmentByApp.get(String(app._id)) ? { _id: assessmentByApp.get(String(app._id))._id, title: assessmentByApp.get(String(app._id)).title || 'Candidate assessment' } : null,
+                latestResult: latestResult ? {
+                    score: latestResult.score,
+                    passed: latestResult.passed,
+                    submittedAt: latestResult.submittedAt,
+                    proctoring: latestResult.proctoring || null
+                } : null,
+                verificationTest: candidateVerification ? {
+                    status: candidateVerification.status,
+                    score: candidateVerification.score,
+                    terminated: candidateVerification.proctoring?.terminated === true,
+                    terminateReason: candidateVerification.proctoring?.terminateReason || '',
+                    restarts: candidateVerification.proctoring?.restarts || 0,
+                    candidateDocId: candidate._id
+                } : null,
+                candidateProfile: candidate ? { _id: candidate._id, skills: candidate.skills || [], years_experience: candidate.years_experience || 0, education_degree: candidate.education_degree, education_field: candidate.education_field, resume_filename: candidate.resume_filename, summary: candidate.summary } : null,
+                matchScore: match?.success_score ?? null,
+                matchReasons: match?.explainability || []
+            };
         }));
         res.json(enriched);
     } catch (error) {
@@ -438,17 +535,20 @@ exports.getRecruiterApplications = async (req, res) => {
 exports.updateApplicationStatus = async (req, res) => {
     try {
         const { status } = req.body;
-        if (!['Reviewed', 'Interview', 'Offer', 'Rejected'].includes(status)) return res.status(400).json({ error: 'Choose a valid application status.' });
-        const application = await Application.findOne({ _id: req.params.id, recruiterId: req.user.id });
+        if (!['Submitted', 'Reviewed', 'Shortlisted', 'Interview', 'Selected', 'Offer', 'Rejected'].includes(status)) return res.status(400).json({ error: 'Choose a valid application status.' });
+        // Update only the status field. Saving a stale document can fail validation
+        // because of unrelated legacy application data.
+        const application = await Application.findOneAndUpdate(
+            { _id: req.params.id, recruiterId: req.user.id },
+            { $set: { status } },
+            { new: true, runValidators: true }
+        );
         if (!application) return res.status(404).json({ error: 'Application not found.' });
-        if (['Interview', 'Offer'].includes(status)) {
-            const candidate = await Candidate.findOne({ user: application.userId });
-            if (!candidate?.verificationTest || candidate.verificationTest.status !== 'Passed') return res.status(409).json({ error: 'The candidate must pass their resume skills assessment before moving to Interview or Offer.' });
-        }
-        application.status = status;
-        await application.save();
         res.json(application);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Update application status failed:', error);
+        if (error.name === 'CastError') return res.status(400).json({ error: 'Invalid application id.' });
+        if (error.name === 'ValidationError') return res.status(400).json({ error: error.message });
+        res.status(500).json({ error: 'Could not save the application status. Check the server connection and try again.' });
     }
 };

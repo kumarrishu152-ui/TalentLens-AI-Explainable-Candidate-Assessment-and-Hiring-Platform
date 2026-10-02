@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   Users, Loader2, AlertCircle, RefreshCw, Trash2, Plus, Upload, 
-  Settings, Briefcase, Save, X, GraduationCap, Grid, List, EyeOff, Eye, Download, Info, Search, ShieldAlert, MoonStar, SunMedium, Clock3, BookmarkPlus, Bookmark, Filter, Calendar, TrendingUp, Sparkles
+  Settings, Briefcase, Save, X, GraduationCap, Grid, List, EyeOff, Eye, Download, Info, Search, ShieldAlert, Clock3, BookmarkPlus, Bookmark, Filter, Calendar, TrendingUp, Sparkles, RotateCcw
 } from 'lucide-react';
 import CandidateCard from '../components/CandidateCard';
 import Leaderboard from '../components/Leaderboard';
@@ -15,13 +15,35 @@ import AboutSection from '../components/AboutSection';
 import GlowCard from '../components/ui/GlowCard';
 import { candidateAPI, userAPI } from '../services/api';
 import VoiceInput from '../components/VoiceInput';
+import AgentPanel from '../components/AgentPanel';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../hooks/useTheme';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { setShowKeyModal } = useAuth();
   const [candidates, setCandidates] = useState([]);
   const [jobConfig, setJobConfig] = useState(null);
   const [applications, setApplications] = useState([]);
+  const [scheduledInterviews, setScheduledInterviews] = useState([]);
+  const [reviewingApplication, setReviewingApplication] = useState(null);
+  const [testTitle, setTestTitle] = useState('Candidate skills assessment');
+  const [testTopic, setTestTopic] = useState('');
+  const [testCount, setTestCount] = useState(6);
+  const [testLevel, setTestLevel] = useState('intermediate');
+  const [testDuration, setTestDuration] = useState(30);
+  const [testPassingScore, setTestPassingScore] = useState(70);
+  const [testQuestions, setTestQuestions] = useState([]);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testError, setTestError] = useState('');
+  const [schedulingApplication, setSchedulingApplication] = useState(null);
+  const [interviewTime, setInterviewTime] = useState('');
+  const [interviewLink, setInterviewLink] = useState('');
+  const [aiRankings, setAiRankings] = useState(null);
+  const [aiRankingsError, setAiRankingsError] = useState('');
+  const [aiRankingsLoading, setAiRankingsLoading] = useState(false);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,7 +52,7 @@ const Dashboard = () => {
   // View & Obfuscation Preferences
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'board'
   const [blindMode, setBlindMode] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useTheme();
   
   // Search & Filtering State
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,6 +61,7 @@ const Dashboard = () => {
   const [selectedTagFilter, setSelectedTagFilter] = useState('All');
   const [seniorityFilter, setSeniorityFilter] = useState('All');
   const [skillClusterFilter, setSkillClusterFilter] = useState('All');
+  const [jobFieldFilter, setJobFieldFilter] = useState('All');
   const [selectedCandidateId, setSelectedCandidateId] = useState(null);
   const [sortKey, setSortKey] = useState('score'); // 'score', 'exp', 'rating', 'date'
   const [savedSearches, setSavedSearches] = useState([
@@ -69,6 +92,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    candidateAPI.getInterviews().then(items => setScheduledInterviews(Array.isArray(items) ? items.filter(item => item.status === 'Scheduled') : [])).catch(() => setScheduledInterviews([]));
   }, []);
 
   const fetchDashboardData = async () => {
@@ -165,12 +189,61 @@ const Dashboard = () => {
   };
 
   const handleApplicationStatus = async (applicationId, status) => {
+    const application = applications.find(item => item._id === applicationId);
+    if (status === 'Interview') {
+      setTestError('');
+      setSchedulingApplication(application);
+      setInterviewTime('');
+      setInterviewLink('');
+      return;
+    }
     try {
       const updated = await candidateAPI.updateApplicationStatus(applicationId, status);
       setApplications(current => current.map(application => application._id === applicationId ? { ...application, status: updated.status } : application));
+      if (status === 'Reviewed') {
+        setReviewingApplication(application);
+        setTestTitle(`${application?.jobTitle || 'Role'} skills assessment`);
+        setTestTopic(application?.jobTitle || jobConfig?.jobTitle || 'Role skills');
+        setTestQuestions([]);
+        setTestError('');
+      }
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not update this application.');
+      const message = err.response?.data?.error || (err.message === 'Network Error' ? 'Could not reach the TalentLens API. Start or restart the server, then try again.' : err.message) || 'Could not update this application.';
+      alert(message);
     }
+  };
+
+  const generateTestQuestions = async () => {
+    setTestBusy(true); setTestError('');
+    try {
+      const result = await candidateAPI.generateAssessmentQuestions({ topic: testTopic, count: testCount, level: testLevel });
+      if (!Array.isArray(result?.questions) || !result.questions.length) throw new Error('The AI returned no questions. Try another topic.');
+      setTestQuestions(result.questions.map(question => ({ ...question, selected: true })));
+    } catch (err) {
+      setTestError(err.response?.data?.error || (err.message === 'Network Error' ? 'Could not reach the AI service. Confirm the backend is running and a Gemini API key is configured.' : err.message) || 'Could not generate questions.');
+    }
+    finally { setTestBusy(false); }
+  };
+
+  const saveAssessment = async () => {
+    const selected = testQuestions.filter(question => question.selected).map(({ prompt, options, correctAnswer }) => ({ prompt, options, correctAnswer }));
+    if (!selected.length) { setTestError('Select at least one question before creating the test.'); return; }
+    setTestBusy(true); setTestError('');
+    try {
+      await candidateAPI.createAssessment({ applicationId: reviewingApplication._id, title: testTitle, questions: selected, durationMinutes: Number(testDuration), passingScore: Number(testPassingScore) });
+      setReviewingApplication(null);
+    } catch (err) { setTestError(err.response?.data?.error || 'Could not create the assessment.'); }
+    finally { setTestBusy(false); }
+  };
+
+  const saveInterview = async (event) => {
+    event.preventDefault(); setTestBusy(true); setTestError('');
+    try {
+      await candidateAPI.scheduleInterview(schedulingApplication._id, { scheduledAt: new Date(interviewTime).toISOString(), meetingUrl: interviewLink, durationMinutes: 45 });
+      setApplications(current => current.map(item => item._id === schedulingApplication._id ? { ...item, status: 'Interview' } : item));
+      setSchedulingApplication(null);
+    } catch (err) { setTestError(err.response?.data?.error || 'Could not schedule the interview.'); }
+    finally { setTestBusy(false); }
   };
 
   const apiPatchStatus = async (candidateId, newStatus) => {
@@ -224,9 +297,11 @@ const Dashboard = () => {
 
 
   const filteredCandidates = candidates.filter(candidate => {
-    const matchesSearch = searchQuery.trim() === '' || 
-      candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      candidate.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = query === '' ||
+      String(candidate.name || '').toLowerCase().includes(query) ||
+      String(candidate.email || '').toLowerCase().includes(query) ||
+      (candidate.skills || []).some(skill => String(skill).toLowerCase().includes(query));
 
     const matchesStatus = statusFilter === 'All' || (candidate.pipelineStatus || 'New') === statusFilter;
 
@@ -271,6 +346,46 @@ const Dashboard = () => {
     return 'Generalist';
   };
 
+  const jobFields = ['Engineering', 'Sales', 'Marketing', 'Design', 'Finance', 'Operations', 'Data & Analytics', 'HR', 'Other'];
+
+  // AI-assisted ranking: analyze all applicants for the active job through Gemini.
+  const loadAiRankings = async () => {
+    if (!jobConfig?._id) return;
+    setAiRankingsLoading(true);
+    setAiRankingsError('');
+    try {
+      const data = await candidateAPI.getRankings(jobConfig._id);
+      setAiRankings(data);
+    } catch (err) {
+      setAiRankings(null);
+      setAiRankingsError(err.response?.data?.error || 'AI ranking could not be loaded.');
+    } finally { setAiRankingsLoading(false); }
+  };
+
+  const recommendationChip = {
+    'strong-hire': 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300',
+    'interview': 'bg-blue-100 text-blue-800 ring-1 ring-blue-300',
+    'maybe': 'bg-amber-100 text-amber-800 ring-1 ring-amber-300',
+    'pass': 'bg-slate-200 text-slate-700 ring-1 ring-slate-300'
+  };
+
+  // Re-arrange a locked (terminated) test so the candidate can retake it.
+  const handleRearrangeTest = async (application) => {
+    const label = application.candidateName || 'this candidate';
+    const isAssessmentTerminated = application.latestResult?.proctoring?.terminated && application.assessment?._id;
+    const isVerificationTerminated = application.verificationTest?.terminated && application.verificationTest?.candidateDocId;
+    if (!isAssessmentTerminated && !isVerificationTerminated) return;
+    if (!window.confirm(`Re-arrange the locked test for ${label}? Their terminated attempt will be cleared and they can retake it.`)) return;
+    try {
+      if (isAssessmentTerminated) await candidateAPI.resetAssessment(application.assessment._id);
+      if (isVerificationTerminated) await candidateAPI.resetVerificationTest(application.verificationTest.candidateDocId);
+      alert(`Test re-arranged for ${label}. They can now retake it from their dashboard.`);
+      fetchDashboardData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not re-arrange the test.');
+    }
+  };
+
   const recruitmentMetrics = React.useMemo(() => {
     const totalApplications = applications.length;
     const submitted = applications.filter(app => app.status === 'Submitted').length;
@@ -284,6 +399,12 @@ const Dashboard = () => {
       offers
     };
   }, [applications]);
+
+  // Shortlist by job field: match applications to the recruiter-configured job field.
+  const jobFieldFilteredApplications = React.useMemo(() => {
+    if (jobFieldFilter === 'All') return applications;
+    return applications.filter(application => (application.jobField || 'Other') === jobFieldFilter);
+  }, [applications, jobFieldFilter]);
 
   const getBiasMetrics = () => {
     const groups = { PhD: [], Masters: [], Bachelors: [], Associate: [], None: [] };
@@ -403,6 +524,11 @@ const Dashboard = () => {
 
   const mutedText = darkMode ? 'text-slate-400' : 'text-slate-600';
   const softCard = darkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200';
+  const copilotContext = {
+    job: jobConfig ? { title: jobConfig.jobTitle, location: jobConfig.location, minimumExperience: jobConfig.minExperience, requiredSkills: (jobConfig.skillsList || []).map(skill => ({ name: skill.tag, importance: skill.importance })) } : null,
+    applicantCount: candidates.length,
+    applicants: candidates.slice(0, 20).map((candidate, index) => ({ candidateLabel: `Candidate ${index + 1}`, skills: (candidate.skills || []).slice(0, 20), experienceYears: candidate.years_experience, score: candidate.prediction?.success_score, evidence: (candidate.prediction?.skillEvidence || []).slice(0, 5), missingSkills: (candidate.prediction?.missingMustHaves || []).slice(0, 10) }))
+  };
 
   return (
     <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative ${themeClasses}`}>
@@ -419,19 +545,13 @@ const Dashboard = () => {
           <p className={mutedText}>
             {filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''} matched criteria
           </p>
-        </div>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
           <button onClick={() => navigate('/create-job')} className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-200 hover:bg-primary-700">
             <Plus className="h-4 w-4" /> Create a job
           </button>
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm transition-all ${darkMode ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-          >
-            {darkMode ? <SunMedium className="w-4 h-4" /> : <MoonStar className="w-4 h-4" />}
-            {darkMode ? 'Premium light' : 'Premium dark'}
-          </button>
+          <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
           {/* View Mode Toggle */}
           <div className="flex rounded-lg border border-slate-200 p-1 bg-slate-50">
             <button 
@@ -489,6 +609,10 @@ const Dashboard = () => {
         </div>
       </div>
 
+      <div className="mb-8">
+        <AgentPanel kind="recruiter" context={copilotContext} />
+      </div>
+
       {/* --- ACTIVE Hiring Job profile card --- */}
       {!jobConfig && <button onClick={() => navigate('/create-job')} className="mb-6 flex w-full items-center gap-4 rounded-2xl border border-dashed border-primary-300 bg-primary-50 p-5 text-left hover:bg-primary-100"><span className="rounded-xl bg-white p-3 text-primary-700 shadow-sm"><Briefcase className="h-6 w-6" /></span><span className="flex-1"><strong className="block text-slate-900">Create your first job post</strong><span className="mt-1 block text-sm text-slate-600">Add role details and must-have skills. Published jobs appear in candidate search.</span></span><Plus className="h-5 w-5 text-primary-700" /></button>}
       {jobConfig && (
@@ -529,7 +653,7 @@ const Dashboard = () => {
         </GlowCard>
       )}
 
-      <div className={`mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${cardClasses}`}>
+      <div className={`mb-8 rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-blue-50 to-violet-50 p-5 shadow-lg shadow-slate-200/60 ${cardClasses}`}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-700">Hiring snapshot</p>
@@ -542,53 +666,66 @@ const Dashboard = () => {
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Open roles</p>
+          <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-500 to-blue-600 p-4 text-white shadow-md shadow-blue-200/50">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">Open roles</p>
             <div className="mt-3 flex items-end justify-between">
-              <span className="text-3xl font-bold text-slate-900">{hiringOverview.openRoles}</span>
-              <div className="rounded-xl bg-blue-100 p-2 text-blue-700"><Briefcase className="w-5 h-5" /></div>
+              <span className="text-3xl font-bold">{hiringOverview.openRoles}</span>
+              <div className="rounded-xl bg-white/15 p-2 text-white"><Briefcase className="w-5 h-5" /></div>
             </div>
-            <p className="mt-2 text-xs text-slate-500">Priority hiring queue</p>
+            <p className="mt-2 text-xs text-blue-100">Priority hiring queue</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Interviews</p>
+          <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-500 to-purple-600 p-4 text-white shadow-md shadow-violet-200/50">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-100">Interviews</p>
             <div className="mt-3 flex items-end justify-between">
-              <span className="text-3xl font-bold text-slate-900">{hiringOverview.interviewsThisWeek}</span>
-              <div className="rounded-xl bg-violet-100 p-2 text-violet-700"><Calendar className="w-5 h-5" /></div>
+              <span className="text-3xl font-bold">{hiringOverview.interviewsThisWeek}</span>
+              <div className="rounded-xl bg-white/15 p-2 text-white"><Calendar className="w-5 h-5" /></div>
             </div>
-            <p className="mt-2 text-xs text-slate-500">Scheduled this week</p>
+            <p className="mt-2 text-xs text-violet-100">Scheduled this week</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Avg. time to hire</p>
+          <div className="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-amber-200/50">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-100">Avg. time to hire</p>
             <div className="mt-3 flex items-end justify-between">
-              <span className="text-3xl font-bold text-slate-900">{hiringOverview.avgTimeToHire}d</span>
-              <div className="rounded-xl bg-amber-100 p-2 text-amber-700"><Clock3 className="w-5 h-5" /></div>
+              <span className="text-3xl font-bold">{hiringOverview.avgTimeToHire}d</span>
+              <div className="rounded-xl bg-white/15 p-2 text-white"><Clock3 className="w-5 h-5" /></div>
             </div>
-            <p className="mt-2 text-xs text-slate-500">Across shortlisted roles</p>
+            <p className="mt-2 text-xs text-amber-100">Across shortlisted roles</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Offer acceptance</p>
+          <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-500 to-teal-600 p-4 text-white shadow-md shadow-emerald-200/50">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-100">Offer acceptance</p>
             <div className="mt-3 flex items-end justify-between">
-              <span className="text-3xl font-bold text-slate-900">{hiringOverview.offerAcceptance}%</span>
-              <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700"><TrendingUp className="w-5 h-5" /></div>
+              <span className="text-3xl font-bold">{hiringOverview.offerAcceptance}%</span>
+              <div className="rounded-xl bg-white/15 p-2 text-white"><TrendingUp className="w-5 h-5" /></div>
             </div>
-            <p className="mt-2 text-xs text-slate-500">Strong candidate conversion</p>
+            <p className="mt-2 text-xs text-emerald-100">Strong candidate conversion</p>
           </div>
         </div>
       </div>
 
-      <div className={`mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${cardClasses}`}>
+      <div id="applications-list" className={`mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${cardClasses}`}>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Applications</p>
             <h3 className={`mt-1 text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Recent candidate applications</h3>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100">
-            <span className="h-2 w-2 rounded-full bg-blue-600" />
-            {applications.length} total
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+              Job field
+              <select
+                value={jobFieldFilter}
+                onChange={(event) => setJobFieldFilter(event.target.value)}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:ring-2 focus:ring-primary-100"
+              >
+                <option value="All">All fields</option>
+                {jobFields.map(field => <option key={field} value={field}>{field}</option>)}
+              </select>
+            </label>
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100">
+              <span className="h-2 w-2 rounded-full bg-blue-600" />
+              {jobFieldFilteredApplications.length} shown
+            </div>
           </div>
         </div>
 
@@ -596,9 +733,13 @@ const Dashboard = () => {
           <div className={`rounded-xl border border-dashed p-6 text-center text-sm ${darkMode ? 'border-slate-700 bg-slate-800/60 text-slate-300' : 'border-slate-300 bg-slate-50 text-slate-500'}`}>
             No applications have been submitted yet.
           </div>
+        ) : jobFieldFilteredApplications.length === 0 ? (
+          <div className={`rounded-xl border border-dashed p-6 text-center text-sm ${darkMode ? 'border-slate-700 bg-slate-800/60 text-slate-300' : 'border-slate-300 bg-slate-50 text-slate-500'}`}>
+            No applications for “{jobFieldFilter}” roles yet. Switch the job field filter to see more.
+          </div>
         ) : (
           <div className="space-y-3">
-            {[...applications].sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1)).map((application) => (
+            {jobFieldFilteredApplications.map((application) => (
               <div key={application._id || `${application.jobTitle}-${application.candidateEmail}`} className={`flex flex-col gap-4 rounded-2xl border p-4 lg:flex-row lg:items-center lg:justify-between ${darkMode ? 'border-slate-700 bg-slate-800/70' : 'border-slate-200 bg-slate-50'}`}>
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-sm font-bold text-blue-700">
@@ -611,8 +752,23 @@ const Dashboard = () => {
                     <div className="mt-1 text-sm text-slate-500">{application.candidateEmail || 'No email'}</div>
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{application.jobTitle || 'Open role'}</span>
+                      {application.jobField && <span className="rounded-full bg-indigo-50 px-2 py-1 font-semibold text-indigo-700 ring-1 ring-indigo-100">{application.jobField}</span>}
                       <span>{application.salary || 'Competitive'}</span>
                       {application.matchScore !== null && application.matchScore !== undefined && <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{application.matchScore}% AI role match</span>}
+                      {application.assessment && <span className="rounded-full bg-violet-50 px-2 py-1 font-semibold text-violet-700 ring-1 ring-violet-100">Test assigned</span>}
+                      {application.latestResult && (
+                        <span
+                          title={application.latestResult.proctoring?.terminated
+                            ? `Test terminated: ${application.latestResult.proctoring.terminateReason || 'proctoring violation'} · ${application.latestResult.proctoring.restarts || 0} restart(s)`
+                            : application.latestResult.proctoring ? `Proctoring: ${application.latestResult.proctoring.suspiciousEventCount || 0} flag(s), camera ${application.latestResult.proctoring.cameraStreamHealthy ? 'OK' : 'interrupted'}, mic ${application.latestResult.proctoring.micStreamHealthy ? 'OK' : 'interrupted'}` : 'No proctoring data'}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${application.latestResult.proctoring?.terminated ? 'bg-slate-900 text-white ring-1 ring-slate-700' : application.latestResult.proctoring?.suspiciousEventCount ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200' : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'}`}
+                        >
+                          <ShieldAlert className="h-3 w-3" />
+                          {application.latestResult.proctoring?.terminated
+                            ? `TERMINATED${application.latestResult.proctoring?.restarts ? ` · ${application.latestResult.proctoring.restarts} restart${application.latestResult.proctoring.restarts === 1 ? '' : 's'}` : ''}`
+                            : `Test ${application.latestResult.score}%${application.latestResult.proctoring?.suspiciousEventCount ? ` · ${application.latestResult.proctoring.suspiciousEventCount} flag${application.latestResult.proctoring.suspiciousEventCount === 1 ? '' : 's'}` : ' · clean'}`}
+                        </span>
+                      )}
                     </div>
                     {application.candidateProfile && <div className="mt-2 flex flex-wrap gap-1.5">{application.candidateProfile.skills.slice(0, 5).map(skill => <span key={skill} className="rounded-full bg-white px-2 py-1 text-[10px] text-slate-600 ring-1 ring-slate-200">{skill}</span>)}{application.candidateProfile.resume_filename && <span className="inline-flex items-center gap-1 text-[10px] text-slate-500"><Upload className="h-3 w-3" /> Resume parsed</span>}</div>}
                   </div>
@@ -631,14 +787,94 @@ const Dashboard = () => {
                     {application.status || 'Submitted'}
                   </span>
                   <select aria-label={`Update ${application.candidateName || 'candidate'} application status`} value={application.status || 'Submitted'} onChange={event => handleApplicationStatus(application._id, event.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
-                    {['Submitted', 'Reviewed', 'Interview', 'Offer', 'Rejected'].map(status => <option key={status} value={status}>{status}</option>)}
+                    {['Submitted', 'Reviewed', 'Shortlisted', 'Interview', 'Selected', 'Offer', 'Rejected'].map(status => <option key={status} value={status}>{status}</option>)}
                   </select>
+                  {(application.latestResult?.proctoring?.terminated || application.verificationTest?.terminated) && (
+                    <button
+                      type="button"
+                      onClick={() => handleRearrangeTest(application)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-2.5 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                      title="Clear the terminated attempt and let the candidate retake the test"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Re-arrange test
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* --- AI RANKED SHORTLIST --- */}
+      <div className={`mb-8 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-indigo-50 p-5 shadow-sm ${cardClasses}`}>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-violet-700"><Sparkles className="h-4 w-4" /> AI ranked shortlist</p>
+            <h3 className={`mt-1 text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Gemini analysis of every applicant</h3>
+            <p className="mt-1 text-sm text-slate-500">AI reviews skills, experience, education, assessments, and proctoring signals for the active role — ranked with strengths, concerns, and a recommendation. Decision support only; the final call is yours.</p>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {aiRankings && <button type="button" onClick={() => setAiRankings(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Clear</button>}
+            <button
+              type="button"
+              onClick={loadAiRankings}
+              disabled={aiRankingsLoading || !jobConfig?._id}
+              className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-violet-200 hover:bg-violet-800 disabled:opacity-50"
+            >
+              {aiRankingsLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing candidates…</> : <><Sparkles className="h-4 w-4" /> {aiRankings ? 'Re-run AI ranking' : 'Rank with AI'}</>}
+            </button>
+          </div>
+        </div>
+r
+        {!jobConfig?._id && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Create a job first — AI ranking analyzes applicants against your active role.</p>}
+        {aiRankingsError && <p className="mb-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{aiRankingsError}</p>}
+        {aiRankings && !aiRankingsError && (
+          <>
+            {aiRankings.aiError && <p className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800" role="status">AI analysis unavailable: {aiRankings.aiError} Showing deterministic scores only.</p>}
+            {aiRankings.rows.length === 0 ? (
+              <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No applications for this role yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {aiRankings.rows.map((row, index) => (
+                  <div key={row.application._id || index} className={`rounded-2xl border p-4 ${darkMode ? 'border-slate-700 bg-slate-800/70' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold ${row.ai ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {row.ai ? `#${row.ai.rank}` : '—'}
+                        </div>
+                        <div>
+                          <div className={`text-base font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{row.candidate?.displayName || row.application.candidateName || 'Candidate'}</div>
+                          <div className="mt-0.5 text-sm text-slate-500">{row.application.jobTitle || 'Open role'} · Applied {new Date(row.application.createdAt).toLocaleDateString()}</div>
+                          {row.ai?.summary && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-700">{row.ai.summary}</p>}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {row.ai && <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] ${recommendationChip[row.ai.recommendation] || recommendationChip.maybe}`}>{row.ai.recommendation}</span>}
+                        <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                          Score {row.ranking?.overallScore ?? 0}%{row.ai ? ` · AI ${row.ai.score}%` : ''}
+                        </span>
+                        {row.proctoringFlags > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800"><ShieldAlert className="h-3 w-3" /> {row.proctoringFlags} flag{row.proctoringFlags === 1 ? '' : 's'}</span>}
+                      </div>
+                    </div>
+                    {(row.ai?.strengths?.length > 0 || row.ai?.concerns?.length > 0 || row.ai?.redFlags?.length > 0) && (
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        {row.ai?.strengths?.length > 0 && <div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700">Strengths</p><ul className="mt-1 space-y-1 text-xs text-slate-600">{row.ai.strengths.map((item, itemIndex) => <li key={itemIndex}>• {item}</li>)}</ul></div>}
+                        {row.ai?.concerns?.length > 0 && <div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-700">Concerns</p><ul className="mt-1 space-y-1 text-xs text-slate-600">{row.ai.concerns.map((item, itemIndex) => <li key={itemIndex}>• {item}</li>)}</ul></div>}
+                        {row.ai?.redFlags?.length > 0 && <div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-rose-700">Red flags</p><ul className="mt-1 space-y-1 text-xs text-slate-600">{row.ai.redFlags.map((item, itemIndex) => <li key={itemIndex}>• {item}</li>)}</ul></div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {reviewingApplication && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="assessment-dialog-title"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-violet-700">Application reviewed</p><h2 id="assessment-dialog-title" className="mt-1 text-xl font-bold text-slate-900">Set up an optional candidate test</h2><p className="mt-1 text-sm text-slate-600">Generate questions with AI, review them, then choose which questions to assign to {reviewingApplication.candidateName || 'this candidate'}.</p></div><button type="button" onClick={() => setReviewingApplication(null)} className="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100">Close</button></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-slate-700">Test title<input value={testTitle} onChange={event => setTestTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label><label className="text-sm font-medium text-slate-700">Topic or role skills<input value={testTopic} onChange={event => setTestTopic(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label><label className="text-sm font-medium text-slate-700">Difficulty<select value={testLevel} onChange={event => setTestLevel(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label><label className="text-sm font-medium text-slate-700">Question count<select value={testCount} onChange={event => setTestCount(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">{[3, 5, 6, 8, 10, 12, 15].map(count => <option key={count} value={count}>{count}</option>)}</select></label><label className="text-sm font-medium text-slate-700">Duration (minutes)<input type="number" min="5" max="240" value={testDuration} onChange={event => setTestDuration(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label><label className="text-sm font-medium text-slate-700">Passing score (%)<input type="number" min="0" max="100" value={testPassingScore} onChange={event => setTestPassingScore(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label></div><button type="button" disabled={testBusy || !testTopic.trim()} onClick={generateTestQuestions} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Sparkles className="h-4 w-4" />{testBusy ? 'Generating…' : 'Generate questions with AI'}</button>{testError && <div className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700" role="alert"><p>{testError}</p>{/gemini.*key|key.*gemini/i.test(testError) && <button type="button" onClick={() => setShowKeyModal(true)} className="mt-2 font-semibold underline">Set up Gemini key</button>}</div>}<div className="mt-4 space-y-3">{testQuestions.map((question, index) => <label key={`${index}-${question.prompt}`} className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-4"><input type="checkbox" checked={question.selected} onChange={event => setTestQuestions(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} className="mt-1" /><span className="min-w-0"><span className="block font-semibold text-slate-900">{index + 1}. {question.prompt}</span><span className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">{question.options.map((option, optionIndex) => <span key={optionIndex} className={optionIndex === question.correctAnswer ? 'font-semibold text-emerald-700' : ''}>{String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.correctAnswer ? ' · Correct answer' : ''}</span>)}</span></span></label>)}</div><div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setReviewingApplication(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Mark reviewed without a test</button><button type="button" disabled={testBusy || !testQuestions.some(question => question.selected)} onClick={saveAssessment} className="rounded-lg bg-primary-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Create test for candidate</button></div></div></div>}
+
+      {schedulingApplication && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="interview-dialog-title"><form onSubmit={saveInterview} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><h2 id="interview-dialog-title" className="text-xl font-bold text-slate-900">Schedule interview</h2><p className="mt-1 text-sm text-slate-600">{schedulingApplication.candidateName} · {schedulingApplication.jobTitle}</p><label className="mt-5 block text-sm font-medium text-slate-700">Date and time<input type="datetime-local" required min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} value={interviewTime} onChange={event => setInterviewTime(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label><label className="mt-4 block text-sm font-medium text-slate-700">Meeting link<input type="url" value={interviewLink} onChange={event => setInterviewLink(event.target.value)} placeholder="https://meet.example.com/..." className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>{testError && <p className="mt-3 text-sm text-rose-700" role="alert">{testError}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setSchedulingApplication(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button><button type="submit" disabled={testBusy || !interviewTime} className="rounded-lg bg-primary-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{testBusy ? 'Scheduling…' : 'Schedule interview'}</button></div></form></div>}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         <div className={`xl:col-span-2 rounded-2xl border p-5 shadow-sm ${cardClasses}`}>
@@ -647,7 +883,7 @@ const Dashboard = () => {
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Shortlist</p>
               <h3 className="mt-1 text-xl font-bold text-slate-900">Top candidate picks</h3>
             </div>
-            <button className="text-sm font-semibold text-primary-600 hover:text-primary-700">View all</button>
+            <button type="button" onClick={() => document.getElementById('candidate-pipeline')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-semibold text-primary-600 hover:text-primary-700">View all</button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -717,7 +953,7 @@ const Dashboard = () => {
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Shortlist</p>
               <h3 className={`mt-1 text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Priority shortlist</h3>
             </div>
-            <button className="text-sm font-semibold text-primary-600 hover:text-primary-700">Open queue</button>
+            <button type="button" onClick={() => document.getElementById('candidate-pipeline')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-semibold text-primary-600 hover:text-primary-700">Open queue</button>
           </div>
 
           <div className="space-y-3">
@@ -751,49 +987,45 @@ const Dashboard = () => {
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Interview</p>
               <h3 className={`mt-1 text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Upcoming interviews</h3>
             </div>
-            <button className="text-sm font-semibold text-primary-600 hover:text-primary-700">Schedule</button>
+            <button type="button" onClick={() => document.getElementById('applications-list')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-semibold text-primary-600 hover:text-primary-700">Schedule</button>
           </div>
 
           <div className="space-y-3">
-            {[
-              { name: 'Aarav Mehta', role: 'System Design Round', time: 'Tue, 10:30 AM' },
-              { name: 'Priya Nair', role: 'Portfolio Review', time: 'Thu, 2:00 PM' },
-              { name: 'Daniel Brooks', role: 'Hiring Manager Chat', time: 'Fri, 9:15 AM' }
-            ].map((interview) => (
-              <div key={interview.name} className={`flex items-center justify-between rounded-xl border p-3 ${darkMode ? 'border-slate-700 bg-slate-800/70' : 'border-slate-200 bg-slate-50'}`}>
+            {scheduledInterviews.length ? scheduledInterviews.slice(0, 3).map((interview) => (
+              <div key={interview._id} className={`flex items-center justify-between rounded-xl border p-3 ${darkMode ? 'border-slate-700 bg-slate-800/70' : 'border-slate-200 bg-slate-50'}`}>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800">{interview.role}</p>
-                  <p className="text-[11px] text-slate-500">{interview.name}</p>
+                  <p className="text-sm font-semibold text-slate-800">{interview.applicationId?.jobTitle || 'Interview'}</p>
+                  <p className="text-[11px] text-slate-500">{interview.candidateId?.displayName || interview.applicationId?.candidateName || 'Candidate'}</p>
                 </div>
                 <div className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700">
-                  {interview.time}
+                  {new Date(interview.scheduledAt).toLocaleString()}
                 </div>
               </div>
-            ))}
+            )) : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">No interviews scheduled. Choose Interview in an application to add one.</p>}
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-        <div className={`rounded-2xl border p-5 shadow-sm ${cardClasses}`}>
+        <div className={`rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-blue-50 p-5 shadow-lg shadow-blue-100/60 ${cardClasses}`}>
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Analytics</p>
               <h3 className={`mt-1 text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>AI score analytics</h3>
             </div>
-            <div className="rounded-xl bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-700">
+            <div className="rounded-xl bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-700 ring-1 ring-primary-100">
               Avg {Math.round((filteredCandidates.reduce((sum, candidate) => sum + (candidate.prediction?.success_score || 0), 0) / (filteredCandidates.length || 1))) || 0}%
             </div>
           </div>
 
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={scoreAnalytics}>
+              <BarChart data={scoreAnalytics} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#334155' : '#e2e8f0'} />
                 <XAxis dataKey="label" stroke={darkMode ? '#cbd5e1' : '#64748b'} />
                 <YAxis stroke={darkMode ? '#cbd5e1' : '#64748b'} />
-                <Tooltip />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                <Tooltip cursor={{ fill: 'rgba(59,130,246,0.08)' }} />
+                <Bar dataKey="count" radius={[8, 8, 0, 0]} maxBarSize={40}>
                   {scoreAnalytics.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={['#22c55e', '#3b82f6', '#8b5cf6', '#f59e0b'][index % 4]} />
                   ))}
@@ -803,24 +1035,24 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl border p-5 shadow-sm ${cardClasses}`}>
+        <div className={`rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-violet-50 p-5 shadow-lg shadow-violet-100/60 ${cardClasses}`}>
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Pipeline</p>
               <h3 className={`mt-1 text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Hiring funnel</h3>
             </div>
-            <div className="rounded-xl bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
+            <div className="rounded-xl bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700 ring-1 ring-violet-100">
               {candidates.length} total
             </div>
           </div>
 
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={funnelData}>
+              <AreaChart data={funnelData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="funnelFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.12} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#334155' : '#e2e8f0'} />
@@ -835,41 +1067,41 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-        <div className={`rounded-2xl border p-5 shadow-sm ${cardClasses}`}>
+        <div className={`rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-emerald-50 p-5 shadow-lg shadow-emerald-100/60 ${cardClasses}`}>
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Performance</p>
               <h3 className={`mt-1 text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Score trend</h3>
             </div>
-            <span className="rounded-xl bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Live</span>
+            <span className="rounded-xl bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">Live</span>
           </div>
 
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={scoreTrendData}>
+              <LineChart data={scoreTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#334155' : '#e2e8f0'} />
                 <XAxis dataKey="name" stroke={darkMode ? '#cbd5e1' : '#64748b'} />
                 <YAxis stroke={darkMode ? '#cbd5e1' : '#64748b'} />
                 <Tooltip />
-                <Line type="monotone" dataKey="score" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="score" stroke="#22c55e" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#22c55e' }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className={`rounded-2xl border p-5 shadow-sm ${cardClasses}`}>
+        <div className={`rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-sky-50 p-5 shadow-lg shadow-sky-100/60 ${cardClasses}`}>
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Distribution</p>
               <h3 className={`mt-1 text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>AI match mix</h3>
             </div>
-            <span className="rounded-xl bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">Summary</span>
+            <span className="rounded-xl bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 ring-1 ring-blue-100">Summary</span>
           </div>
 
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={scoreDistributionData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={70} paddingAngle={3}>
+                <Pie data={scoreDistributionData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={72} paddingAngle={3} stroke="rgba(255,255,255,0.8)" strokeWidth={2}>
                   {scoreDistributionData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                   ))}
@@ -930,6 +1162,17 @@ const Dashboard = () => {
                   <option value="Interview">Interview</option>
                   <option value="Offer">Offer</option>
                   <option value="Rejected">Rejected</option>
+              </select>
+          </div>
+          <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Job Field</label>
+              <select
+                  className="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary-500 font-medium"
+                  value={jobFieldFilter}
+                  onChange={(e) => setJobFieldFilter(e.target.value)}
+              >
+                  <option value="All">All fields</option>
+                  {jobFields.map(field => <option key={field} value={field}>{field}</option>)}
               </select>
           </div>
           <div>
@@ -995,13 +1238,15 @@ const Dashboard = () => {
                   value={minScoreFilter} 
                   onChange={(e) => setMinScoreFilter(parseInt(e.target.value))}
                 />
-              </div>
-              <button 
+              </div>                <button 
                 onClick={() => {
                   setSearchQuery('');
                   setStatusFilter('All');
                   setMinScoreFilter(0);
                   setSelectedTagFilter('All');
+                  setSeniorityFilter('All');
+                  setSkillClusterFilter('All');
+                  setJobFieldFilter('All');
                   setSortKey('score');
                 }}
                 className="text-xs font-bold text-primary-600 hover:text-primary-700 underline"
@@ -1030,7 +1275,7 @@ const Dashboard = () => {
           </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div id="candidate-pipeline" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         
         {/* Main Content Pane */}
         <div className="lg:col-span-3">

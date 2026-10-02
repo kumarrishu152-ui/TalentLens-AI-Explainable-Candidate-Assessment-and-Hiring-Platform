@@ -182,4 +182,80 @@ const generateAssessmentQuestions = async ({ topic, count = 8, level = 'intermed
     throw lastError;
 };
 
-module.exports = { parseResumeWithGemini, getSkillsWithEmbeddings, generateAgentReply, generateAssessmentQuestions, parseQuestionsJson };
+const parseRankingJson = (text) => {
+    const cleaned = String(text || '').replace(/```(?:json)?/gi, '').trim();
+    const first = cleaned.indexOf('{');
+    const last = cleaned.lastIndexOf('}');
+    if (first < 0 || last < first) throw new Error('The AI response was not valid JSON.');
+    const parsed = JSON.parse(cleaned.slice(first, last + 1));
+    const source = Array.isArray(parsed) ? parsed : parsed.rankings;
+    if (!Array.isArray(source)) throw new Error('The AI response did not contain a rankings list.');
+    const rankings = source.map(item => ({
+        id: String(item.id || item.candidateId || ''),
+        rank: Math.max(1, Math.round(Number(item.rank) || 99)),
+        score: Math.max(0, Math.min(100, Math.round(Number(item.score) || 0))),
+        summary: String(item.summary || '').slice(0, 500),
+        strengths: Array.isArray(item.strengths) ? item.strengths.map(s => String(s).slice(0, 200)).slice(0, 5) : [],
+        concerns: Array.isArray(item.concerns) ? item.concerns.map(s => String(s).slice(0, 200)).slice(0, 5) : [],
+        recommendation: ['strong-hire', 'interview', 'maybe', 'pass'].includes(item.recommendation) ? item.recommendation : 'maybe',
+        redFlags: Array.isArray(item.redFlags) ? item.redFlags.map(s => String(s).slice(0, 200)).slice(0, 5) : []
+    })).filter(item => item.id);
+    if (!rankings.length) throw new Error('The AI response had no usable rankings.');
+    return rankings;
+};
+
+/**
+ * AI-assisted ranking: Gemini analyzes candidate profiles against the job and
+ * returns an ordered, explainable ranking. Runs alongside the deterministic
+ * scorer — it complements, never replaces, the transparent rule-based score.
+ */
+const aiRankCandidates = async ({ job, candidates }, apiKey) => {
+    const genAI = getClient(apiKey);
+    const modelConfig = { generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } };
+
+    const jobSummary = {
+        title: job.jobTitle,
+        field: job.jobField || 'Other',
+        minExperience: job.minExperience || 0,
+        targetDegree: job.targetDegree || 'Bachelors',
+        targetField: job.targetField || '',
+        requiredSkills: (job.skillsList || []).map(s => ({ tag: s.tag, importance: s.importance }))
+    };
+
+    const candidateSummaries = (candidates || []).slice(0, 25).map((candidate, index) => ({
+        id: String(candidate.id || index),
+        name: candidate.name,
+        skills: (candidate.skills || []).slice(0, 25),
+        yearsExperience: candidate.years_experience ?? 0,
+        degree: candidate.education_degree || '',
+        field: candidate.education_field || '',
+        summary: String(candidate.summary || '').slice(0, 600),
+        assessmentScore: candidate.assessmentScore ?? null,
+        aiFitScore: candidate.aiFitScore ?? null,
+        proctoringFlags: candidate.proctoringFlags || 0
+    }));
+
+    const instructions = `You are an expert hiring analyst. Rank the candidates below against the job requirements.
+Consider: skill coverage and depth (weight required skill importance), relevant experience vs the role target, education fit, assessment performance, and any red flags.
+Judge candidates ONLY on the evidence provided. Never consider or infer age, gender, ethnicity, religion, disability, or any other protected characteristic. Do not penalize career gaps or non-traditional backgrounds unless the evidence shows missing role requirements.
+Return a JSON object with this exact schema:
+{"rankings":[{"id":"candidate id","rank":1,"score":0-100,"summary":"2-sentence fit assessment citing specific evidence","strengths":["..."],"concerns":["..."],"recommendation":"strong-hire|interview|maybe|pass","redFlags":["only concrete evidence-based flags, else empty array"]}]}
+Rank every candidate. rank starts at 1 for the best fit. score is your 0-100 fit estimate.`;
+
+    const payload = `${instructions}\n\nJOB:\n${JSON.stringify(jobSummary)}\n\nCANDIDATES:\n${JSON.stringify(candidateSummaries)}`;
+
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            const result = await generateContentWithFallback(genAI, modelConfig, () => (attempt === 0 ? payload : `${payload}\nYour prior response could not be parsed. Return only the exact JSON schema, no markdown.`));
+            const response = await result.response;
+            return parseRankingJson(response.text());
+        } catch (error) {
+            lastError = error;
+            if (attempt === 1 || error?.status || error?.statusCode || /quota|api key|permission|not configured|rate limit/i.test(String(error?.message || ''))) throw error;
+        }
+    }
+    throw lastError;
+};
+
+module.exports = { parseResumeWithGemini, getSkillsWithEmbeddings, generateAgentReply, generateAssessmentQuestions, parseQuestionsJson, aiRankCandidates };

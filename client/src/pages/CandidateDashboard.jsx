@@ -3,21 +3,13 @@ import { useAuth } from '../context/AuthContext';
 import { candidateAPI } from '../services/api';
 import {
   Briefcase,
-  CalendarClock,
-  CheckCircle2,
   Sparkles,
   ArrowRight,
-  FileText,
-  Target,
   Upload,
   TrendingUp,
   Search,
-  MapPin,
-  Star,
-  Bell,
   ShieldCheck,
   Clock3,
-  Filter,
   SlidersHorizontal,
   ArrowUpRight,
   Check,
@@ -25,9 +17,48 @@ import {
   Wallet
 } from 'lucide-react';
 import VoiceInput from '../components/VoiceInput';
+import AgentPanel from '../components/AgentPanel';
+import ThemeToggle from '../components/ThemeToggle';
+import ProctoredTestDialog from '../components/ProctoredTestDialog';
+import { useTheme } from '../hooks/useTheme';
+
+// Hiring pipeline shown wherever a candidate applies, in recruiter pipeline order.
+const PROCESS_STEPS = ['Submitted', 'Reviewed', 'Shortlisted', 'Interview', 'Offer'];
+const STEP_CHIP = {
+  past: 'bg-emerald-100 text-emerald-700',
+  current: 'bg-blue-600 text-white',
+  upcoming: 'bg-white text-slate-400 ring-1 ring-slate-200',
+  skipped: 'bg-slate-100 text-slate-300',
+  rejected: 'bg-rose-600 text-white'
+};
+
+const processStepState = (status, step) => {
+  if (status === 'Rejected') return step === 'Rejected' ? 'rejected' : 'past';
+  if (status === 'Selected') return step === 'Offer' ? 'current' : 'past';
+  const order = PROCESS_STEPS.indexOf(status);
+  const stepOrder = PROCESS_STEPS.indexOf(step);
+  if (step === 'Rejected') return 'skipped';
+  if (stepOrder === order) return 'current';
+  return stepOrder < order ? 'past' : 'upcoming';
+};
+
+const ProcessStepTrack = ({ status, className = '' }) => (
+  <ol className={`flex flex-wrap items-center gap-1.5 ${className}`} aria-label="Hiring process steps">
+    {[...PROCESS_STEPS, 'Rejected'].map((step, index, all) => {
+      const state = processStepState(status, step);
+      return (
+        <li key={step} className="flex items-center gap-1.5">
+          <span title={step} className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${STEP_CHIP[state]}`}>{step}</span>
+          {index < all.length - 1 && <span className="h-px w-2 bg-slate-300" />}
+        </li>
+      );
+    })}
+  </ol>
+);
 
 const CandidateDashboard = () => {
   const { user } = useAuth();
+  const [darkMode, setDarkMode] = useTheme();
   const [resumeName, setResumeName] = useState('No resume uploaded');
   const [selectedJobIndex, setSelectedJobIndex] = useState(0);
   const [jobQuery, setJobQuery] = useState('');
@@ -44,17 +75,34 @@ const CandidateDashboard = () => {
   const [assessmentAnswers, setAssessmentAnswers] = useState({});
   const [assessmentScore, setAssessmentScore] = useState(null);
   const [assessmentBusy, setAssessmentBusy] = useState(false);
+  const [testError, setTestError] = useState('');
   const [resumeProfile, setResumeProfile] = useState(null);
+  const [upcomingInterviews, setUpcomingInterviews] = useState([]);
+  const [assignedAssessments, setAssignedAssessments] = useState([]);
+  const [activeAssessment, setActiveAssessment] = useState(null);
+  const [assessmentChoices, setAssessmentChoices] = useState({});
+  const [assessmentMessage, setAssessmentMessage] = useState('');
+  const [terminatedTestIds, setTerminatedTestIds] = useState([]);
 
   const applications = myApplications.map(app => ({ title: app.jobTitle, company: app.company || 'Hiring team', stage: app.status, status: app.status, date: app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '', location: 'See job details' }));
+
+  // Latest application status per job so Apply buttons can show live progress.
+  const applicationByJob = new Map(myApplications.flatMap((app) => {
+    const entries = [];
+    if (app.jobId) entries.push([String(app.jobId), app.status]);
+    if (app.jobTitle) entries.push([String(app.jobTitle), app.status]);
+    return entries;
+  }));
+
   const stats = [
-    { label: 'Applications', value: myApplications.length, icon: FileText, accent: 'bg-blue-100 text-blue-700' },
-    { label: 'Interviews', value: myApplications.filter(app => app.status === 'Interview').length, icon: CalendarClock, accent: 'bg-violet-100 text-violet-700' },
-    { label: 'Offers', value: myApplications.filter(app => app.status === 'Offer').length, icon: CheckCircle2, accent: 'bg-emerald-100 text-emerald-700' },
-    { label: 'Resume', value: resumeProfile ? 'Ready' : 'Add', icon: Target, accent: 'bg-amber-100 text-amber-700' }
+    { label: 'Applications', value: myApplications.length },
+    { label: 'Interviews', value: myApplications.filter(app => app.status === 'Interview').length },
+    { label: 'Offers', value: myApplications.filter(app => app.status === 'Offer').length },
+    { label: 'Resume', value: resumeProfile ? 'Ready' : 'Add' }
   ];
 
   const skills = resumeProfile?.skills || [];
+  const coachContext = { skills: skills.slice(0, 30), experienceYears: resumeProfile?.years_experience ?? null, education: resumeProfile?.education_field || '', applications: myApplications.slice(0, 12).map(({ jobTitle, status }) => ({ jobTitle, status })) };
   const profileProgress = [
     { name: 'Resume profile', value: resumeProfile ? 100 : 0, color: 'bg-emerald-500' },
     { name: 'Skills detected', value: Math.min(100, skills.length * 12), color: 'bg-blue-500' },
@@ -106,6 +154,44 @@ const CandidateDashboard = () => {
     };
   }, []);
 
+  useEffect(() => {
+    candidateAPI.getInterviews().then(items => setUpcomingInterviews(Array.isArray(items) ? items.filter(item => item.status === 'Scheduled') : [])).catch(() => setUpcomingInterviews([]));
+  }, []);
+
+  useEffect(() => {
+    candidateAPI.getMyAssessments().then(items => setAssignedAssessments(Array.isArray(items) ? items : [])).catch(() => setAssignedAssessments([]));
+  }, []);
+
+  const submitAssignedAssessment = async (proctoringReport, cleanupStreams) => {
+    if (!activeAssessment || Object.keys(assessmentChoices).length !== activeAssessment.questions.length) return;
+    setAssessmentBusy(true);
+    try {
+      const answers = activeAssessment.questions.map((_, index) => Number(assessmentChoices[index]));
+      const result = await candidateAPI.submitAssessment(activeAssessment._id, answers, proctoringReport);
+      setAssignedAssessments(current => current.map(item => item._id === activeAssessment._id ? { ...item, result } : item));
+      setAssessmentMessage(`Submitted · ${result.score}% · ${result.passed ? 'Passed' : 'Not passed'}${result.proctoring?.suspiciousEventCount ? ` · ${result.proctoring.suspiciousEventCount} proctoring flag${result.proctoring.suspiciousEventCount === 1 ? '' : 's'} recorded` : ' · clean proctoring session'}`);
+      setActiveAssessment(null);
+      setAssessmentChoices({});
+    } catch (error) { setAssessmentMessage(error.response?.data?.error || 'Could not submit this assessment.'); }
+    finally { setAssessmentBusy(false); if (typeof cleanupStreams === 'function') cleanupStreams(); }
+  };
+
+  // Anti-cheat: a strike dismantles the attempt (answers wiped, test restarts).
+  const dismantleAssignedAssessment = () => setAssessmentChoices({});
+
+  // Anti-cheat: after the final strike the test is terminated for good.
+  const terminateAssignedAssessment = async (proctoringReport) => {
+    if (!activeAssessment) return;
+    try {
+      await candidateAPI.reportAssessmentViolation(activeAssessment._id, { proctoring: proctoringReport, terminated: true, terminateReason: proctoringReport.terminateReason, restarts: proctoringReport.restarts });
+      setTerminatedTestIds(current => current.includes(activeAssessment._id) ? current : [...current, activeAssessment._id]);
+      setAssignedAssessments(current => current.map(item => item._id === activeAssessment._id ? { ...item, result: { score: 0, passed: false, terminated: true } } : item));
+    } catch (error) { console.error('Failed to record test termination:', error); }
+    setActiveAssessment(null);
+    setAssessmentChoices({});
+    setAssessmentMessage('Test terminated for a proctoring violation. The recruiter has been notified.');
+  };
+
   const filteredJobs = useMemo(() => {
     const searchValue = (activeSearch || jobQuery || '').trim().toLowerCase();
 
@@ -118,7 +204,7 @@ const CandidateDashboard = () => {
         jobTags.some((tag) => (tag || '').toLowerCase().includes(searchValue));
 
       const typeMatch = selectedType === 'All' || (job.type || 'Full-time') === selectedType;
-      const locationMatch = locationFilter === 'All' || (job.location || '').includes(locationFilter);
+      const locationMatch = locationFilter === 'All' || String(job.location || '').toLowerCase().includes(locationFilter.toLowerCase());
       const salaryValue = String(job.salary || '');
       const parsedSalary = Number.parseInt(salaryValue.replace(/[^\d]/g, ''), 10) || 0;
       const salaryMatch =
@@ -130,7 +216,14 @@ const CandidateDashboard = () => {
     });
   }, [activeSearch, jobQuery, selectedType, locationFilter, salaryFilter, jobsFound]);
 
-  const selectedJob = filteredJobs[selectedJobIndex] || jobsFound[0] || null;
+  const selectedJob = filteredJobs[selectedJobIndex] || null;
+  const selectedJobStatus = selectedJob
+    ? (applicationByJob.get(String(selectedJob._id)) || applicationByJob.get(String(selectedJob.role)) || null)
+    : null;
+
+  const recommendedSkillGaps = selectedJob && resumeProfile
+    ? (selectedJob.tags || []).filter(tag => !skills.some(skill => skill.toLowerCase() === String(tag).toLowerCase())).slice(0, 5)
+    : [];
 
   useEffect(() => {
     if (filteredJobs.length === 0) {
@@ -193,58 +286,63 @@ const CandidateDashboard = () => {
     } finally { setAssessmentBusy(false); }
   };
 
-  const submitAssessment = async () => {
+  const submitAssessment = async (proctoringReport, cleanupStreams) => {
     if (!assessment) return;
     setAssessmentBusy(true);
     try {
       const answers = assessment.questions.map((_, index) => assessmentAnswers[index]);
-      const result = await candidateAPI.submitVerificationTest(assessment.candidateId, answers);
+      const result = await candidateAPI.submitVerificationTest(assessment.candidateId, answers, proctoringReport);
       setAssessmentScore(result.verificationTest.score);
     } catch (error) {
       alert(error.response?.data?.error || 'Could not submit the assessment.');
-    } finally { setAssessmentBusy(false); }
+    } finally { setAssessmentBusy(false); if (typeof cleanupStreams === 'function') cleanupStreams(); }
+  };
+
+  const dismantleVerificationTest = () => setAssessmentAnswers({});
+
+  const terminateVerificationTest = async (proctoringReport) => {
+    if (!assessment) return;
+    try {
+      await candidateAPI.reportVerificationViolation(assessment.candidateId, { proctoring: proctoringReport, terminated: true, terminateReason: proctoringReport.terminateReason, restarts: proctoringReport.restarts });
+    } catch (error) { console.error('Failed to record test termination:', error); }
+    setAssessment(null);
+    setAssessmentAnswers({});
+    setAssessmentScore(0);
+    setTerminatedTestIds(current => current.includes('verification') ? current : [...current, 'verification']);
+    alert('Test terminated for a proctoring violation. This attempt is recorded as failed.');
   };
 
   return (
     <div className="mx-auto max-w-7xl p-6 md:p-8">
-      <div className="mb-8 rounded-3xl bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 p-6 text-white shadow-xl shadow-emerald-200">
+      <div className="mb-8 overflow-hidden rounded-[28px] bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 p-6 text-white shadow-[0_20px_45px_rgba(16,185,129,0.28)]">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-100">Candidate Portal</p>
             <h1 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Welcome back, {user?.displayName || user?.username || 'Candidate'}!</h1>
             <p className="mt-2 text-sm text-emerald-50">Your job search is moving fast. Keep your profile updated for better matches.</p>
           </div>
-          <div className="flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm">
-            <div className="rounded-xl bg-white/15 p-2">
-              <Bell className="h-5 w-5 text-white" />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur-sm">
+              <p className="text-xs uppercase tracking-[0.16em] text-emerald-100">Your search</p>
+              <p className="mt-1 font-semibold">{myApplications.length} active application{myApplications.length === 1 ? '' : 's'}</p>
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-100">Next milestone</p>
-              <p className="mt-1 text-base font-semibold">Technical interview on Sep 24</p>
-            </div>
+            <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
           </div>
         </div>
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map(({ label, value, icon: Icon, accent }) => (
-          <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">{label}</p>
-                <p className="mt-3 text-3xl font-bold text-slate-900">{value}</p>
-              </div>
-              <div className={`rounded-xl p-3 ${accent}`}>
-                <Icon className="h-5 w-5" />
-              </div>
-            </div>
+        {stats.map(({ label, value }) => (
+          <div key={label} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-emerald-50 p-5 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <p className="text-sm text-slate-500">{label}</p>
+            <p className="mt-3 text-3xl font-bold text-slate-900">{value}</p>
           </div>
         ))}
       </div>
 
-      <div id="ai-match-section" className="mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div id="ai-match-section" className="mb-8 rounded-3xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-emerald-50 p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="flex flex-1 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
             <Search className="h-5 w-5 text-slate-400" />
             <input
               type="text"
@@ -271,7 +369,7 @@ const CandidateDashboard = () => {
                 setActiveSearch(jobQuery.trim());
                 setSelectedJobIndex(0);
               }}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-primary-200 hover:bg-primary-700"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-primary-200 transition-transform duration-200 hover:-translate-y-0.5 hover:bg-primary-700"
             >
               Find jobs
             </button>
@@ -280,7 +378,7 @@ const CandidateDashboard = () => {
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-[260px_1fr]">
-        <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <aside className="rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-5 shadow-sm">
           <div className="mb-5 flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-primary-600" />
             <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">Filters</h3>
@@ -333,13 +431,15 @@ const CandidateDashboard = () => {
               </div>
             </div>
 
-            <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="rounded-2xl bg-gradient-to-br from-violet-50 to-indigo-50 p-4 ring-1 ring-violet-100">
               <div className="mb-2 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-violet-600" />
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">AI match</p>
               </div>
-              <p className="text-lg font-bold text-slate-900">91% profile fit</p>
-              <p className="mt-1 text-xs text-slate-600">You are strongly aligned with product, frontend, and AI roles.</p>
+              {resumeProfile ? <>
+                <p className="text-sm font-semibold text-slate-900">{skills.length} skills in your profile</p>
+                <p className="mt-1 text-xs text-slate-600">{recommendedSkillGaps.length ? `Selected role skill gaps: ${recommendedSkillGaps.join(', ')}.` : selectedJob ? 'Your listed skills cover this role’s tags.' : 'Choose a role to review its skill requirements.'}</p>
+              </> : <p className="text-xs text-slate-600">Add your resume to see profile based skill guidance.</p>}
             </div>
           </div>
         </aside>
@@ -375,7 +475,7 @@ const CandidateDashboard = () => {
                     key={jobKey}
                     type="button"
                     onClick={() => setSelectedJobIndex(index)}
-                    className={`w-full rounded-2xl border p-4 text-left shadow-sm transition ${selectedJob && selectedJob.role === job.role ? 'border-primary-200 bg-primary-50/40 shadow-primary-100' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+                    className={`w-full rounded-3xl border p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 ${selectedJob && selectedJob.role === job.role ? 'border-primary-200 bg-gradient-to-r from-primary-50/80 to-white shadow-primary-100' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -405,7 +505,7 @@ const CandidateDashboard = () => {
                     </div>
 
                     <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">AI summary</p>
                         <p className="mt-1 text-sm text-slate-700">{job.aiInsight}</p>
                       </div>
@@ -415,18 +515,21 @@ const CandidateDashboard = () => {
                           event.stopPropagation();
                           handleApply(job);
                         }}
-                        className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700"
+                        className="inline-flex flex-shrink-0 items-center gap-2 rounded-xl bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700"
                       >
                         {applied ? 'Applied' : 'Apply'} <ArrowUpRight className="h-3.5 w-3.5" />
                       </button>
                     </div>
+
+                    {/* Hiring process shown right where the candidate applies. */}
+                    <ProcessStepTrack status={applicationByJob.get(String(jobKey)) || 'Not applied'} className="mt-3" />
                   </button>
                 );
               })
             )}
           </div>
 
-          <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <aside className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-5 shadow-sm">
             {selectedJob ? (
               <>
                 <div className="mb-4 flex items-center justify-between">
@@ -437,7 +540,7 @@ const CandidateDashboard = () => {
                   <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">{selectedJob.match}</span>
                 </div>
 
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 p-4 ring-1 ring-emerald-100">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-bold text-slate-900">{selectedJob.company}</p>
@@ -484,10 +587,20 @@ const CandidateDashboard = () => {
                   <span className="font-semibold text-slate-800">{selectedJob.responseTime}</span>
                 </div>
 
+                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Hiring process</p>
+                  <ProcessStepTrack status={selectedJobStatus || 'Not applied'} className="mt-2.5" />
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                    {selectedJobStatus
+                      ? 'Your live progress for this role, updated by the recruiter.'
+                      : 'Apply to start at Submitted — the recruiter advances you through each step.'}
+                  </p>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => handleApply(selectedJob)}
-                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-primary-200 hover:bg-primary-700"
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-primary-200 hover:bg-primary-700"
                 >
                   {appliedJobs.includes(selectedJob?._id || selectedJob?.role) ? 'Applied' : 'Apply now'}
                   <ArrowRight className="h-4 w-4" />
@@ -502,15 +615,70 @@ const CandidateDashboard = () => {
         </main>
       </div>
 
-      <section className="mb-8 flex flex-col gap-4 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-white p-5 md:flex-row md:items-center md:justify-between">
+      {assignedAssessments.length > 0 && <section className="mb-8 rounded-3xl border border-amber-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-amber-700">Recruiter assessments</p><h2 className="mt-1 text-xl font-bold text-slate-900">Tests for your applications</h2>{assessmentMessage && <p className="mt-2 text-sm font-semibold text-emerald-700" role="status">{assessmentMessage}</p>}<div className="mt-4 grid gap-3 md:grid-cols-2">{assignedAssessments.map(item => <article key={item._id} className="rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-900">{item.title}</h3><p className="mt-1 text-sm text-slate-500">{item.applicationId?.jobTitle || 'Application'} · {item.questions.length} questions · {item.durationMinutes} min · Pass: {item.passingScore}%</p></div>{item.result ? <span className={`rounded-full px-2 py-1 text-xs font-bold ${item.result.terminated ? 'bg-slate-900 text-white' : item.result.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{item.result.terminated ? 'Locked · contact recruiter to re-arrange' : `${item.result.score}% · ${item.result.passed ? 'Passed' : 'Not passed'}`}</span> : <button type="button" onClick={() => { setActiveAssessment(item); setAssessmentChoices({}); setAssessmentMessage(''); }} className="rounded-lg bg-primary-700 px-3 py-2 text-sm font-semibold text-white">Take test</button>}</div></article>)}</div></section>}
+      {activeAssessment && <ProctoredTestDialog
+        title={activeAssessment.title}
+        subtitle={`${activeAssessment.durationMinutes} minutes · Proctored with camera & mic · Select one answer per question`}
+        questions={activeAssessment.questions}
+        busy={assessmentBusy}
+        error={''}
+        canSubmit={Object.keys(assessmentChoices).length === activeAssessment.questions.length}
+        submitHint={`Answer all ${activeAssessment.questions.length} questions to submit.`}
+        onClose={() => setActiveAssessment(null)}
+        onSubmit={submitAssignedAssessment}
+        onDismantle={dismantleAssignedAssessment}
+        onTerminate={terminateAssignedAssessment}
+        renderQuestion={(question, index) => (
+          <fieldset key={`${activeAssessment._id}-${index}`} className="mt-5 first:mt-0">
+            <legend className="font-semibold text-slate-800">{index + 1}. {question.prompt}</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {question.options.map((option, optionIndex) => (
+                <label key={optionIndex} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 hover:bg-slate-50">
+                  <input type="radio" name={`recruiter-test-${index}`} checked={Number(assessmentChoices[index]) === optionIndex} onChange={() => setAssessmentChoices(current => ({ ...current, [index]: optionIndex }))} />
+                  {option}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+      />}
+
+      <section className="mb-8 flex flex-col gap-4 rounded-3xl border border-violet-200 bg-gradient-to-r from-violet-50 via-white to-indigo-50 p-5 shadow-sm md:flex-row md:items-center md:justify-between">
         <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-700">Resume skills assessment</p><h2 className="mt-1 text-xl font-bold text-slate-900">Verify skills from your resume</h2><p className="mt-1 text-sm text-slate-600">Questions are selected from the skills parsed from your uploaded resume.</p></div>
-        <button type="button" onClick={startAssessment} disabled={!resumeProfile || !skills.length || assessmentBusy} className="rounded-xl bg-violet-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{assessmentBusy ? 'Preparing…' : resumeProfile ? 'Start skills assessment' : 'Upload a resume first'}</button>
+        <button type="button" onClick={startAssessment} disabled={!resumeProfile || !skills.length || assessmentBusy || terminatedTestIds.includes('verification')} className="rounded-xl bg-violet-700 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-violet-200 transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50">{terminatedTestIds.includes('verification') ? 'Test terminated — contact recruiter' : assessmentBusy ? 'Preparing…' : resumeProfile ? 'Start skills assessment' : 'Upload a resume first'}</button>
       </section>
-      {assessment && <div role="dialog" aria-modal="true" className="mb-8 rounded-2xl border border-violet-200 bg-white p-6 shadow-lg"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-violet-700">Resume skills assessment</p><h3 className="mt-1 text-xl font-bold">{assessment.questions.length} questions from your skills</h3></div><button onClick={() => setAssessment(null)} className="text-sm font-semibold text-slate-500">Close</button></div>{assessment.questions.map((question, index) => <fieldset key={`${question.skill}-${index}`} className="mt-5"><legend className="font-semibold text-slate-800">{index + 1}. <span className="text-violet-700">{question.skill}:</span> {question.question}</legend><div className="mt-2 grid gap-2">{question.options.map((option, optionIndex) => <label key={option} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm"><input type="radio" name={`q${index}`} checked={assessmentAnswers[index] === optionIndex} disabled={assessmentScore !== null} onChange={() => setAssessmentAnswers(prev => ({ ...prev, [index]: optionIndex }))} />{option}</label>)}</div></fieldset>)}<div className="mt-5 flex flex-wrap items-center gap-3"><button disabled={assessmentBusy || assessmentScore !== null || Object.keys(assessmentAnswers).length !== assessment.questions.length} onClick={submitAssessment} className="rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{assessmentBusy ? 'Submitting…' : 'Submit answers'}</button>{assessmentScore !== null && <p className="font-semibold text-slate-700">Assessment score: {assessmentScore}% · {assessmentScore >= 70 ? 'Passed' : 'Keep practicing'}.</p>}</div></div>}
+      {assessment && assessmentScore === null && <ProctoredTestDialog
+        title="Resume skills assessment"
+        subtitle={`${assessment.questions.length} questions from your skills · Proctored with camera & mic`}
+        questions={assessment.questions}
+        busy={assessmentBusy}
+        error={''}
+        canSubmit={Object.keys(assessmentAnswers).length === assessment.questions.length}
+        submitHint={`Answer all ${assessment.questions.length} questions to submit.`}
+        onClose={() => setAssessment(null)}
+        onSubmit={submitAssessment}
+        onDismantle={dismantleVerificationTest}
+        onTerminate={terminateVerificationTest}
+        renderQuestion={(question, index) => (
+          <fieldset key={`${question.skill}-${index}`} className="mt-5 first:mt-0">
+            <legend className="font-semibold text-slate-800">{index + 1}. <span className="text-violet-700">{question.skill}:</span> {question.question}</legend>
+            <div className="mt-2 grid gap-2">
+              {question.options.map((option, optionIndex) => (
+                <label key={option} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm hover:bg-slate-50">
+                  <input type="radio" name={`q${index}`} checked={assessmentAnswers[index] === optionIndex} onChange={() => setAssessmentAnswers(prev => ({ ...prev, [index]: optionIndex }))} />
+                  {option}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+      />}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.9fr]">
         <div className="space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <AgentPanel kind="candidate" context={coachContext} />
+
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6 shadow-sm">
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Applications</p>
@@ -527,7 +695,7 @@ const CandidateDashboard = () => {
                 { label: 'Under Review', value: myApplications.filter(app => app.status === 'Reviewed').length, color: 'bg-violet-100 text-violet-700' },
                 { label: 'Interviewing', value: myApplications.filter(app => app.status === 'Interview').length, color: 'bg-emerald-100 text-emerald-700' }
               ].map((item) => (
-                <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div key={item.label} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm">
                   <div className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${item.color}`}>
                     {item.label}
                   </div>
@@ -538,19 +706,22 @@ const CandidateDashboard = () => {
 
             <div className="space-y-4">
               {applications.length ? applications.map((job) => (
-                <div key={job.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
-                  <div>
+                <div key={job.title} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-bold text-slate-900">{job.title}</h3>
                       <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">{job.company}</span>
                     </div>
                     <p className="mt-1 text-sm text-slate-500">{job.stage} • {job.location}</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${job.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : job.status === 'Awaiting Review' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {job.status}
-                    </span>
-                    <span className="text-sm text-slate-500">{job.date}</span>
+                  <div className="flex flex-col items-start gap-2 lg:items-end">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-500">{job.date}</span>
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${job.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {job.status}
+                      </span>
+                    </div>
+                    <ProcessStepTrack status={job.status} />
                   </div>
                 </div>
               )) : <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Your submitted applications and recruiter updates will appear here.</p>}
@@ -559,15 +730,12 @@ const CandidateDashboard = () => {
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-emerald-50 p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-xl bg-violet-100 p-2 text-violet-700">
-                <Upload className="h-5 w-5" />
-              </div>
               <h2 className="text-xl font-bold text-slate-900">Resume</h2>
             </div>
 
-            <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">
+            <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white/80 p-4">
               <label className="flex cursor-pointer flex-col items-center justify-center text-center">
                 <div className="rounded-full bg-primary-100 p-3 text-primary-700">
                   <Upload className="h-5 w-5" />
@@ -583,11 +751,8 @@ const CandidateDashboard = () => {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-violet-50 p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
-                <TrendingUp className="h-5 w-5" />
-              </div>
               <h2 className="text-xl font-bold text-slate-900">Profile Progress</h2>
             </div>
 
@@ -606,11 +771,8 @@ const CandidateDashboard = () => {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-blue-50 p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
-                <Sparkles className="h-5 w-5" />
-              </div>
               <h2 className="text-xl font-bold text-slate-900">Skills</h2>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -622,11 +784,8 @@ const CandidateDashboard = () => {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-sky-50 p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
               <h2 className="text-xl font-bold text-slate-900">Career Snapshot</h2>
             </div>
             <ul className="space-y-3 text-sm text-slate-600">
@@ -645,15 +804,12 @@ const CandidateDashboard = () => {
             </ul>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-amber-50 p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
-                <Clock3 className="h-5 w-5" />
-              </div>
               <h2 className="text-xl font-bold text-slate-900">Interview Schedule</h2>
             </div>
             <div className="space-y-4">
-              {myApplications.some(app => app.status === 'Interview') ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">An interview is in progress. Check the application status for recruiter updates and scheduling details.</p> : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No interviews scheduled yet. Interview invitations from recruiters will appear here.</p>}
+              {upcomingInterviews.length ? upcomingInterviews.map(interview => <div key={interview._id} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="font-semibold text-slate-900">{interview.applicationId?.jobTitle || 'Interview'}</p><p className="mt-1 text-sm text-slate-600">{new Date(interview.scheduledAt).toLocaleString()} · {interview.durationMinutes} min</p>{interview.meetingUrl && <a className="mt-2 inline-block text-sm font-semibold text-primary-700 underline" href={interview.meetingUrl} target="_blank" rel="noreferrer">Join interview</a>}</div>) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No interviews scheduled yet. Interview invitations from recruiters will appear here.</p>}
             </div>
           </div>
         </div>

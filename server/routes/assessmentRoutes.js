@@ -1,0 +1,13 @@
+const express = require('express');
+const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
+const controller = require('../controllers/assessmentController');
+const router = express.Router();
+router.use(auth);
+router.post('/generate-questions', requireRole('recruiter', 'admin'), controller.generateQuestions);
+router.post('/', requireRole('recruiter', 'admin'), controller.createAssessment);
+router.get('/mine', requireRole('candidate'), controller.listMyAssessments);
+router.post('/:id/submit', requireRole('candidate'), controller.submitAssessment);
+router.post('/:id/violation', requireRole('candidate'), controller.reportProctoringViolation);
+router.post('/:id/reset', requireRole('recruiter', 'admin'), controller.resetAssessment);
+module.exports = router;

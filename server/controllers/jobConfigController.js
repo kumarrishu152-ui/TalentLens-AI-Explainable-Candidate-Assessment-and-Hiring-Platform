@@ -56,9 +56,14 @@ exports.createJobConfig = async (req, res) => {
 
         await JobConfig.updateMany({ userId: req.user.id }, { isActive: false });
 
+        const allowedJobFields = ['Engineering', 'Sales', 'Marketing', 'Design', 'Finance', 'Operations', 'Data & Analytics', 'HR', 'Other'];
+
         const newConfig = new JobConfig({
             userId:          req.user.id,
             jobTitle:        configData.jobTitle,
+            jobField:        allowedJobFields.includes(configData.jobField) ? configData.jobField : 'Other',
+            description:     configData.description || '',
+            assessmentRequirements: configData.assessmentRequirements || [],
             minExperience:   parseInt(configData.minExperience) || 0,
             targetDegree:    configData.targetDegree || 'Bachelors',
             targetField:     configData.targetField  || '',
@@ -135,13 +140,14 @@ exports.getPublicJobs = async (req, res) => {
                 _id: config._id,
                 role: roleName,
                 company: companyLabel,
+                jobField: config.jobField || 'Other',
                 type: jobType,
                 match: 'New role',
                 location,
                 salary: salaryRange,
                 tags: skillTags.length ? skillTags : ['Product', 'Collaboration', 'Execution'],
                 aiInsight: `${roleName} is configured to prioritize ${skillTags.slice(0, 3).join(', ') || 'core product and execution skills'} for screening.`,
-                description: `We are hiring for ${roleName}. This opportunity is opened and configured by the recruiter team with role-specific filters and skill priorities.`,
+                description: config.description || `We are hiring for ${roleName}. This opportunity is opened and configured by the recruiter team with role-specific filters and skill priorities.`,
                 requirements,
                 hiringManager: config.userId && config.userId.username ? config.userId.username : 'Hiring Team',
                 responseTime: '2-5 days',
@@ -187,8 +193,10 @@ exports.updateJobConfig = async (req, res) => {
             }))
         });
 
-        const { experienceWeight, skillsWeight, educationWeight, targetDegree, targetField, skillsList, minExperience } = req.body;
+        const { experienceWeight, skillsWeight, educationWeight, targetDegree, targetField, skillsList, minExperience, jobField } = req.body;
+        const allowedJobFields = ['Engineering', 'Sales', 'Marketing', 'Design', 'Finance', 'Operations', 'Data & Analytics', 'HR', 'Other'];
 
+        if (jobField !== undefined && allowedJobFields.includes(jobField)) config.jobField = jobField;
         if (experienceWeight !== undefined) config.experienceWeight = experienceWeight;
         if (skillsWeight     !== undefined) config.skillsWeight     = skillsWeight;
         if (educationWeight  !== undefined) config.educationWeight  = educationWeight;

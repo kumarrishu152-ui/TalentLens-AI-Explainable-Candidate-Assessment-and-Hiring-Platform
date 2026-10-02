@@ -39,7 +39,23 @@ const CandidateSchema = new mongoose.Schema({
             selectedAnswer: Number
         }],
         score: { type: Number, default: null },
-        completedAt: Date
+        completedAt: Date,
+        // Proctoring summary captured in the browser (camera + mic) during the attempt.
+        proctoring: {
+            enabled: { type: Boolean, default: false },
+            permissioned: { type: Boolean, default: false },
+            cameraStreamHealthy: { type: Boolean, default: true },
+            micStreamHealthy: { type: Boolean, default: true },
+            suspiciousEventCount: { type: Number, default: 0 },
+            terminated: { type: Boolean, default: false },
+            terminateReason: { type: String, default: '' },
+            restarts: { type: Number, default: 0 },
+            events: [{
+                type: { type: String },
+                at: { type: Number },
+                detail: { type: String }
+            }]
+        }
     },
 
     // Multi-Reviewer Ratings (prevents single-reviewer rating override)

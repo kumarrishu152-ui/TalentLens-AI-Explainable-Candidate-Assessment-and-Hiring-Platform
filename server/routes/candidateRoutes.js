@@ -13,6 +13,8 @@ const {
     updatePipelineStatus,
     startVerificationTest,
     submitVerificationTest,
+    reportVerificationViolation,
+    resetVerificationTest,
     applyToJob,
     getMyApplications,
     getRecruiterApplications,
@@ -52,6 +54,8 @@ router.post('/:id/rate', auth, requireRole('recruiter'), rateCandidate);
 router.patch('/:id/status', auth, requireRole('recruiter'), updatePipelineStatus);
 router.post('/:id/verification-test/start', auth, requireRole('candidate'), startVerificationTest);
 router.post('/:id/verification-test/submit', auth, requireRole('candidate'), submitVerificationTest);
+router.post('/:id/verification-test/violation', auth, requireRole('candidate'), reportVerificationViolation);
+router.post('/:id/verification-test/reset', auth, requireRole('recruiter'), resetVerificationTest);
 
 router.get('/', auth, requireRole('recruiter'), getAllCandidates);
 router.get('/:id', auth, requireRole('recruiter'), getCandidateById);

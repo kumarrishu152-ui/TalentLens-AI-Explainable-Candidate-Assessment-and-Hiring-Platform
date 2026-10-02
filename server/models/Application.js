@@ -31,7 +31,7 @@ const ApplicationSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Submitted', 'Reviewed', 'Interview', 'Offer', 'Rejected'],
+    enum: ['Submitted', 'Reviewed', 'Interview', 'Offer', 'Rejected', 'Shortlisted', 'Selected'],
     default: 'Submitted'
   },
   candidateName: {
@@ -47,5 +47,7 @@ const ApplicationSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+ApplicationSchema.index({ userId: 1, jobId: 1 }, { unique: true });
 
 module.exports = mongoose.model('Application', ApplicationSchema);

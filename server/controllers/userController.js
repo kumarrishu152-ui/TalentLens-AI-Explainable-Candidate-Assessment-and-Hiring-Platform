@@ -68,6 +68,8 @@ exports.updateProfile = async (req, res) => {
         }
         res.json(user);
     } catch (error) {
+        if (error.name === 'ValidationError') return res.status(400).json({ error: error.message });
+        console.error('Update profile error:', error);
         res.status(500).json({ error: error.message || 'Could not save profile.' });
     }
 };

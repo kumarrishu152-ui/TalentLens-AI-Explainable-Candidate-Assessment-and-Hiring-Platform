@@ -19,6 +19,7 @@ const JobSetup = () => {
 
   const [formData, setFormData] = useState({
     jobTitle: '',
+    jobField: 'Engineering',
     minExperience: 0,
     targetDegree: 'Bachelors',
     targetField: '',
@@ -247,6 +248,25 @@ const JobSetup = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Job Field</label>
+                                <select
+                                    value={formData.jobField}
+                                    onChange={(e) => setFormData({ ...formData, jobField: e.target.value })}
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-slate-50 focus:bg-white"
+                                >
+                                    <option value="Engineering">Engineering</option>
+                                    <option value="Sales">Sales</option>
+                                    <option value="Marketing">Marketing</option>
+                                    <option value="Design">Design</option>
+                                    <option value="Finance">Finance</option>
+                                    <option value="Operations">Operations</option>
+                                    <option value="Data & Analytics">Data &amp; Analytics</option>
+                                    <option value="HR">HR</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <p className="text-xs text-slate-500 mt-1">Used to shortlist applications by field.</p>
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Salary</label>
                                 <input

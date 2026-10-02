@@ -12,6 +12,8 @@ module.exports = function(req, res, next) {
         req.user = decoded.user;
         next();
     } catch (err) {
-        res.status(401).json({ error: 'Token is not valid' });
+        const reason = err.name === 'TokenExpiredError' ? 'Session expired. Please log in again.' : 'Token is not valid';
+        console.warn(`Auth failed [${err.name}: ${err.message}] ${req.method} ${req.originalUrl} (token prefix: ${String(token).slice(0, 12)}...)`);
+        res.status(401).json({ error: reason });
     }
 };

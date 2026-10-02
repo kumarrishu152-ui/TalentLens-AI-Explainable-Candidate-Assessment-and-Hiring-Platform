@@ -7,6 +7,7 @@ import CandidateDetails from './pages/CandidateDetails';
 import JobSetup from './pages/JobSetup';
 import SetupModal from './components/SetupModal';
 import Login from './pages/Login';
+import AnalyticsPage from './pages/AnalyticsPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const ProtectedRoute = ({ children, allowedRole }) => {
@@ -14,7 +15,7 @@ const ProtectedRoute = ({ children, allowedRole }) => {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-600">Loading...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (allowedRole && user.role !== allowedRole) {
+  if (allowedRole && !(Array.isArray(allowedRole) ? allowedRole.includes(user.role) : user.role === allowedRole)) {
     return <Navigate to={user.role === 'candidate' ? '/candidate' : '/recruiter'} replace />;
   }
   return children;
@@ -41,7 +42,7 @@ function App() {
             <Route path="/" element={<RootRedirect />} />
 
             <Route path="/recruiter" element={
-              <ProtectedRoute allowedRole="recruiter">
+              <ProtectedRoute allowedRole={['recruiter', 'admin']}>
                 <Dashboard />
               </ProtectedRoute>
             } />
@@ -63,6 +64,7 @@ function App() {
                 <JobSetup />
               </ProtectedRoute>
             } />
+            <Route path="/analytics" element={<ProtectedRoute allowedRole={['recruiter', 'admin']}><AnalyticsPage /></ProtectedRoute>} />
           </Routes>
         </div>
       </Router>
