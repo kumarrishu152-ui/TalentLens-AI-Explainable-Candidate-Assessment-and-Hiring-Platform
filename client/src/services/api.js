@@ -217,6 +217,11 @@ export const agentAPI = {
   chat: async (payload) => {
     const response = await api.post('/agents/chat', payload);
     return response.data;
+  },
+  // One turn of the guided mock interview: the opening question, or grading an answer.
+  interviewTurn: async (payload) => {
+    const response = await api.post('/agents/interview', payload);
+    return response.data;
   }
 };
 

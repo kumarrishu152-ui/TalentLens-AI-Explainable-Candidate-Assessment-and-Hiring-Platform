@@ -2,7 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const { getGeminiApiKey } = require('../utils/geminiKey');
-const { generateAgentReply } = require('../services/geminiService');
+const { generateAgentReply, runInterviewTurn } = require('../services/geminiService');
 
 const router = express.Router();
 
@@ -33,13 +33,14 @@ const explainGeminiError = (error) => {
 
 router.post('/chat', auth, requireRole('candidate', 'recruiter'), async (req, res) => {
   try {
-    const { message, history, context } = req.body || {};
+    const { message, history, context, agent } = req.body || {};
     if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'Enter a message to continue.' });
     }
     const apiKey = await getGeminiApiKey(req.user.id);
     const reply = await generateAgentReply({
       role: req.accountRole,
+      agent: typeof agent === 'string' ? agent.trim() : undefined,
       message: message.trim(),
       history: Array.isArray(history) ? history.slice(-10) : [],
       context: context && typeof context === 'object' ? context : {}
@@ -47,6 +48,35 @@ router.post('/chat', auth, requireRole('candidate', 'recruiter'), async (req, re
     res.json({ reply });
   } catch (error) {
     console.error('Assistant response failed:', error);
+    const details = explainGeminiError(error);
+    res.status(details.status).json({ error: details.message, code: details.code });
+  }
+});
+
+// Guided mock interview: the client counts the rounds, this endpoint scores one answer
+// at a time and returns either the next question or the final summary.
+router.post('/interview', auth, requireRole('candidate'), async (req, res) => {
+  try {
+    const { phase, answer, round, totalQuestions, history, context } = req.body || {};
+    if (phase !== 'start' && phase !== 'answer') {
+      return res.status(400).json({ error: 'Interview session phase must be start or answer.' });
+    }
+    const text = typeof answer === 'string' ? answer.trim() : '';
+    if (phase === 'answer' && !text) {
+      return res.status(400).json({ error: 'Write or dictate your answer before submitting.' });
+    }
+    const apiKey = await getGeminiApiKey(req.user.id);
+    const reply = await runInterviewTurn({
+      phase,
+      round,
+      totalQuestions,
+      answer: text,
+      history: Array.isArray(history) ? history.slice(-12) : [],
+      context: context && typeof context === 'object' ? context : {}
+    }, apiKey);
+    res.json(reply);
+  } catch (error) {
+    console.error('Interview trainer failed:', error);
     const details = explainGeminiError(error);
     res.status(details.status).json({ error: details.message, code: details.code });
   }

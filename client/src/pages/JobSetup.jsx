@@ -19,7 +19,9 @@ const JobSetup = () => {
 
   const [formData, setFormData] = useState({
     jobTitle: '',
-    jobField: 'Engineering',
+    // Neutral default: never assume a new role is Engineering, or every
+    // application lands in the wrong bucket for the field filter.
+    jobField: 'Other',
     minExperience: 0,
     targetDegree: 'Bachelors',
     targetField: '',

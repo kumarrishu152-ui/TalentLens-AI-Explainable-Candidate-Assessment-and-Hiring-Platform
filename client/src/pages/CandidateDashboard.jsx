@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { candidateAPI } from '../services/api';
 import {
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import VoiceInput from '../components/VoiceInput';
 import AgentPanel from '../components/AgentPanel';
+import InterviewTrainer from '../components/InterviewTrainer';
 import ThemeToggle from '../components/ThemeToggle';
 import ProctoredTestDialog from '../components/ProctoredTestDialog';
 import { useTheme } from '../hooks/useTheme';
@@ -77,6 +78,8 @@ const CandidateDashboard = () => {
   const [assessmentBusy, setAssessmentBusy] = useState(false);
   const [testError, setTestError] = useState('');
   const [resumeProfile, setResumeProfile] = useState(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const resumeInputRef = useRef(null);
   const [upcomingInterviews, setUpcomingInterviews] = useState([]);
   const [assignedAssessments, setAssignedAssessments] = useState([]);
   const [activeAssessment, setActiveAssessment] = useState(null);
@@ -145,6 +148,8 @@ const CandidateDashboard = () => {
         }
       } catch (error) {
         console.error('Failed to load candidate profile:', error);
+      } finally {
+        if (isMounted) setProfileLoaded(true);
       }
     };
 
@@ -225,6 +230,17 @@ const CandidateDashboard = () => {
     ? (selectedJob.tags || []).filter(tag => !skills.some(skill => skill.toLowerCase() === String(tag).toLowerCase())).slice(0, 5)
     : [];
 
+  // Profile and target role the interview trainer runs a mock interview against.
+  const trainerContext = {
+    targetRole: selectedJob?.role || 'the role being applied to',
+    targetCompany: selectedJob?.company || '',
+    skills: skills.slice(0, 30),
+    experienceYears: resumeProfile?.years_experience ?? null,
+    education: resumeProfile?.education_field || '',
+    applications: myApplications.slice(0, 12).map(({ jobTitle, status }) => ({ jobTitle, status })),
+    upcomingInterviews: upcomingInterviews.slice(0, 3).map((item) => ({ role: item.applicationId?.jobTitle || 'Interview', at: item.scheduledAt }))
+  };
+
   useEffect(() => {
     if (filteredJobs.length === 0) {
       setSelectedJobIndex(0);
@@ -250,9 +266,16 @@ const CandidateDashboard = () => {
     }
   };
 
+  // Applying requires a resume on file; until the profile loads, assume it exists (the server re-checks).
+  const needsResume = profileLoaded && !resumeProfile;
+
   const handleApply = async (job) => {
     const jobKey = job?._id || job?.role || 'job';
     if (appliedJobs.includes(jobKey)) return;
+    if (!resumeProfile) {
+      alert('Upload your resume before applying — recruiters review your resume for every application.');
+      return;
+    }
 
     try {
       const result = await candidateAPI.applyToJob({
@@ -343,12 +366,30 @@ const CandidateDashboard = () => {
       <div id="ai-match-section" className="mb-8 rounded-3xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-emerald-50 p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-1 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
-            <Search className="h-5 w-5 text-slate-400" />
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSearch(jobQuery.trim());
+                setSelectedJobIndex(0);
+              }}
+              aria-label="Search jobs"
+              title="Search jobs"
+              className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+            >
+              <Search className="h-5 w-5" />
+            </button>
             <input
               type="text"
               value={jobQuery}
               onChange={(e) => { setJobQuery(e.target.value); setActiveSearch(''); setSelectedJobIndex(0); }}
               placeholder="Job title, keywords, or company"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  setActiveSearch(jobQuery.trim());
+                  setSelectedJobIndex(0);
+                }
+              }}
               className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
             />
             <VoiceInput label="Search jobs by voice" onTranscript={(text) => { setJobQuery(text); setActiveSearch(text); setSelectedJobIndex(0); }} />
@@ -462,8 +503,8 @@ const CandidateDashboard = () => {
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
-                <p className="text-lg font-bold text-slate-800">No roles match your filters yet.</p>
-                <p className="mt-2 text-sm text-slate-500">Try broadening the job type or reset the salary range.</p>
+                <p className="text-lg font-bold text-slate-800">{jobsFound.length ? 'No roles match your filters yet.' : 'No open roles right now.'}</p>
+                <p className="mt-2 text-sm text-slate-500">{jobsFound.length ? 'Try broadening the job type or reset the salary range.' : 'Live roles posted by recruiters will show up here.'}</p>
               </div>
             ) : (
               filteredJobs.map((job, index) => {
@@ -513,11 +554,15 @@ const CandidateDashboard = () => {
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
+                          if (needsResume) {
+                            resumeInputRef.current?.click();
+                            return;
+                          }
                           handleApply(job);
                         }}
                         className="inline-flex flex-shrink-0 items-center gap-2 rounded-xl bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700"
                       >
-                        {applied ? 'Applied' : 'Apply'} <ArrowUpRight className="h-3.5 w-3.5" />
+                        {applied ? 'Applied' : needsResume ? 'Upload resume to apply' : 'Apply'} <ArrowUpRight className="h-3.5 w-3.5" />
                       </button>
                     </div>
 
@@ -676,6 +721,8 @@ const CandidateDashboard = () => {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.9fr]">
         <div className="space-y-6">
+          <InterviewTrainer context={trainerContext} />
+
           <AgentPanel kind="candidate" context={coachContext} />
 
           <div className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6 shadow-sm">
@@ -741,8 +788,8 @@ const CandidateDashboard = () => {
                   <Upload className="h-5 w-5" />
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-700">Upload your latest resume</p>
-                <p className="mt-1 text-xs text-slate-500">PDF or DOCX up to 10MB · {resumeBusy ? 'Uploading…' : 'Parsed securely for matching'}</p>
-                <input type="file" accept=".pdf,.docx" className="hidden" onChange={handleResumeUpload} />
+                <p className="mt-1 text-xs text-slate-500">PDF or DOCX up to 10MB · {resumeBusy ? 'Uploading…' : 'Required to apply · parsed securely for matching'}</p>
+                <input type="file" accept=".pdf,.docx" className="hidden" onChange={handleResumeUpload} ref={resumeInputRef} />
               </label>
             </div>
 

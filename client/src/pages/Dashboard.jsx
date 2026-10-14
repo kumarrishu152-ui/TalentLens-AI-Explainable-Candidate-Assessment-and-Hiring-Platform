@@ -81,6 +81,7 @@ const Dashboard = () => {
     educationWeight: 20,
     targetDegree: 'Bachelors',
     targetField: '',
+    jobField: 'Other',
     minExperience: 0,
     skillsList: []
   });
@@ -117,6 +118,7 @@ const Dashboard = () => {
           educationWeight: configData.educationWeight !== undefined ? configData.educationWeight : 20,
           targetDegree: configData.targetDegree || 'Bachelors',
           targetField: configData.targetField || '',
+          jobField: configData.jobField || 'Other',
           minExperience: configConfigMinExperience(configData),
           skillsList: configData.skillsList || []
         });
@@ -1610,15 +1612,25 @@ const Dashboard = () => {
                             <option value="Masters">Masters</option>
                             <option value="PhD">PhD</option>
                         </select>
-                      </div>
-                      <div>
+                      </div>                      <div>
                         <label className="block text-xs font-bold text-slate-600 mb-1">Target Field of Study</label>
                         <input 
-                            type="text" 
+                            type="text"
                             className="w-full p-2 border rounded-md text-sm"
                             value={editWeights.targetField}
                             onChange={(e) => setEditWeights({...editWeights, targetField: e.target.value})}
                         />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Job Field</label>
+                        <select
+                            className="w-full p-2 border rounded-md text-sm"
+                            value={editWeights.jobField}
+                            onChange={(e) => setEditWeights({...editWeights, jobField: e.target.value})}
+                        >
+                            {jobFields.map(field => <option key={field} value={field}>{field}</option>)}
+                        </select>
+                        <p className="mt-1 text-[11px] font-medium text-slate-500">Drives the Job field filter on applications.</p>
                       </div>
                     </div>
 

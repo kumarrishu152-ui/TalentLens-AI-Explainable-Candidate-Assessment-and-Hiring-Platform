@@ -117,7 +117,11 @@ exports.getPublicJobs = async (req, res) => {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const configs = await JobConfig.find({ isPublished: true })
+        // Candidates only ever see a recruiter's current, published opening. A
+        // superseded config (isActive false) is tuning history left behind when the
+        // recruiter re-ran setup, not a live role, and would otherwise surface as a
+        // duplicate or stale "job" on the candidate dashboard.
+        const configs = await JobConfig.find({ isPublished: true, isActive: true })
             .sort({ createdAt: -1 })
             .populate('userId', 'username companyName')
             .lean();

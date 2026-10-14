@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Brain, Lock, User, Briefcase, UserCircle2, ShieldCheck, Sparkles, ArrowRight, Eye, EyeOff, Check, Fingerprint, Mail, BarChart3, LineChart, AlertCircle, Loader2 } from 'lucide-react';
+import { Brain, Lock, User, Briefcase, UserCircle2, Sparkles, ArrowRight, Eye, EyeOff, Check, Fingerprint, Mail, BarChart3, LineChart, AlertCircle, Loader2 } from 'lucide-react';
 import { userAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const roles = [
   { id: 'recruiter', label: 'Recruiter', icon: Briefcase, description: 'Manage hiring pipeline and shortlists' },
-  { id: 'candidate', label: 'Candidate', icon: UserCircle2, description: 'Track applications and interview prep' },
-  { id: 'admin', label: 'Admin', icon: ShieldCheck, description: 'Platform administration (provisioned account)' }
+  { id: 'candidate', label: 'Candidate', icon: UserCircle2, description: 'Track applications and interview prep' }
 ];
 
 const highlights = [
@@ -145,8 +144,8 @@ const Login = () => {
             </p>
 
             {/* Role selector */}
-            <div className={`mt-7 grid gap-3 ${isLogin ? 'grid-cols-3' : 'grid-cols-1'}`}>
-              {roles.filter(item => isLogin || item.id !== 'admin').map(({ id, label, icon: Icon, description }) => (
+            <div className={`mt-7 grid gap-3 ${isLogin ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {roles.map(({ id, label, icon: Icon, description }) => (
                 <button
                   key={id}
                   type="button"

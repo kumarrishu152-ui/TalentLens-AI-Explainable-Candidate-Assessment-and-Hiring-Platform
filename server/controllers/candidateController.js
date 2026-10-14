@@ -266,7 +266,44 @@ exports.getAllCandidates = async (req, res) => {
     try {
         if (!req.user || !req.user.id) return res.status(401).json({ error: 'Unauthorized' });
         const candidates = await Candidate.find({ user: req.user.id }).sort({ createdAt: -1 });
-        res.json(candidates);
+
+        // AI-score every candidate against the recruiter's active job config so the
+        // dashboard always shows a fresh score for each candidate without a manual
+        // per-candidate analysis run. Deterministic and offline — no LLM calls here.
+        const activeConfig = await JobConfig.findOne({ userId: req.user.id, isActive: true }).sort({ createdAt: -1 });
+        const scored = await Promise.all(candidates.map(async (candidate) => {
+            const prediction = await getPrediction(candidate, activeConfig);
+            if (!prediction) return candidate;
+
+            const existing = candidate.prediction && typeof candidate.prediction.toObject === 'function'
+                ? candidate.prediction.toObject()
+                : { ...(candidate.prediction || {}) };
+            const nextPrediction = {
+                ...existing,
+                success_score: prediction.success_score,
+                analysis: prediction.analysis,
+                chart_url: prediction.chart_base64,
+                explainability: prediction.explainability || [],
+                skillEvidence: prediction.skillEvidence || existing.skillEvidence || [],
+                duplicateFound: prediction.duplicateFound || existing.duplicateFound || false,
+                authenticityFlag: prediction.authenticityFlag || existing.authenticityFlag || false,
+                disqualified: prediction.disqualified || false,
+                missingMustHaves: prediction.missingMustHaves || []
+            };
+
+            candidate.prediction = nextPrediction;
+            // Persist only when the score actually changed to avoid write churn on every load.
+            const unchanged = existing.success_score === nextPrediction.success_score && existing.analysis === nextPrediction.analysis;
+            if (!unchanged) {
+                try {
+                    await candidate.updateOne({ $set: { prediction: nextPrediction } });
+                } catch (persistError) {
+                    console.warn('Failed to persist AI score for candidate', String(candidate._id), persistError.message);
+                }
+            }
+            return candidate;
+        }));
+        res.json(scored);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -427,7 +464,11 @@ exports.applyToJob = async (req, res) => {
         const recruiterId = jobConfig.userId;
         const recruiter = await User.findById(recruiterId).select('companyName username');
 
+        // A candidate must have uploaded (and parsed) a resume before applying.
         const candidate = await Candidate.findOne({ user: req.user.id }).sort({ createdAt: -1 });
+        if (!candidate || !candidate.resume_filename) {
+            return res.status(400).json({ error: 'Upload your resume before applying for a job.' });
+        }
         const application = await Application.findOneAndUpdate(
             {
                 userId: req.user.id,
@@ -483,8 +524,19 @@ exports.getRecruiterApplications = async (req, res) => {
         const profiles = await Candidate.find({ user: { $in: userIds } }).lean();
         const profileByUser = new Map(profiles.map(profile => [String(profile.user), profile]));
         const jobIds = [...new Set(applications.map(app => app.jobId).filter(Boolean).map(String))];
-        const jobs = await JobConfig.find({ _id: { $in: jobIds } }).lean();
+        const [jobs, activeJob] = await Promise.all([
+            JobConfig.find({ _id: { $in: jobIds } }).lean(),
+            // Fallback field for applications whose job predates the jobField feature
+            // (those documents have no jobField key at all, so they would otherwise
+            // strand every applicant in "Other" and break the recruiter's field filter).
+            JobConfig.findOne({ userId: req.user.id, isActive: true }).sort({ createdAt: -1 }).select('jobField').lean()
+        ]);
         const jobById = new Map(jobs.map(job => [String(job._id), job]));
+        const activeJobField = activeJob && activeJob.jobField ? activeJob.jobField : null;
+        const resolveJobField = (job) => {
+            if (job && job.jobField) return job.jobField;
+            return activeJobField || 'Other';
+        };
         const appIds = applications.map(app => app._id);
         const [assessments, results] = await Promise.all([
             Assessment.find({ applicationId: { $in: appIds } }).select('applicationId title').lean(),
@@ -504,7 +556,7 @@ exports.getRecruiterApplications = async (req, res) => {
             const candidateVerification = candidate?.verificationTest || null;
             return {
                 ...app,
-                jobField: job ? (job.jobField || 'Other') : null,
+                jobField: resolveJobField(job),
                 assessment: assessmentByApp.get(String(app._id)) ? { _id: assessmentByApp.get(String(app._id))._id, title: assessmentByApp.get(String(app._id)).title || 'Candidate assessment' } : null,
                 latestResult: latestResult ? {
                     score: latestResult.score,
