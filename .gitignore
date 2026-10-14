@@ -52,3 +52,8 @@ Thumbs.db
 .idea/
 .vscode/
 
+
+.tmp-audit-buttons.mjs
+.tmp-audit-links.mjs
+.tmp-probe.mjs
+.tmp-ui-audit.mjs
